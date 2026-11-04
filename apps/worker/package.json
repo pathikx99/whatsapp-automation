@@ -1,0 +1,22 @@
+{
+  "name": "@whatsapp-platform/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@whatsapp-platform/config": "workspace:*",
+    "@whatsapp-platform/database": "workspace:*",
+    "@whatsapp-platform/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "typescript": "^5.7.3"
+  }
+}

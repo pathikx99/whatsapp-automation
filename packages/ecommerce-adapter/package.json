@@ -1,0 +1,21 @@
+{
+  "name": "@whatsapp-platform/ecommerce-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@whatsapp-platform/config": "workspace:*",
+    "@whatsapp-platform/database": "workspace:*",
+    "@whatsapp-platform/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.5",
+    "typescript": "^5.7.3"
+  }
+}
