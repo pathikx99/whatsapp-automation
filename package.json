@@ -1,0 +1,35 @@
+{
+  "name": "whatsapp-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Independent WhatsApp Marketing & AI Customer Support Platform",
+  "type": "module",
+  "packageManager": "pnpm@12.16.1",
+  "scripts": {
+    "dev": "pnpm --filter @whatsapp-platform/api dev",
+    "dev:all": "pnpm --parallel -r dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check \"**/*.{ts,js,json,md,yaml,yml}\"",
+    "format:fix": "prettier --write \"**/*.{ts,js,json,md,yaml,yml}\"",
+    "typecheck": "pnpm -r typecheck",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "tsx scripts/db-guard.ts reset",
+    "db:status": "supabase status"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@types/node": "^22.13.5",
+    "eslint": "^9.21.0",
+    "eslint-config-prettier": "^10.0.1",
+    "prettier": "^3.5.2",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.1",
+    "vitest": "^3.0.6"
+  }
+}
