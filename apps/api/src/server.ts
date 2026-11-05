@@ -2,7 +2,7 @@ import fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import crypto from 'node:crypto';
-import { getConfig } from '@whatsapp-platform/config';
+import { getConfig, getBusinessProfile } from '@whatsapp-platform/config';
 import {
   checkLocalDbHealth,
   DbHealthResult,
@@ -41,6 +41,7 @@ function verifyMetaSignature(
 
 export async function buildServer(options: ServerOptions = {}): Promise<FastifyInstance> {
   const config = getConfig();
+  const businessProfile = getBusinessProfile();
   const platformRepo = getPlatformRepository();
   const whatsappProvider = createWhatsAppProvider();
 
@@ -142,7 +143,9 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   app.get('/', async (_req, reply) => {
     return reply.status(200).send({
       status: 'ok',
-      service: 'mintara-bites-whatsapp-platform',
+      service: `${businessProfile.brand.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-whatsapp-platform`,
+      business: businessProfile.brand.name,
+      website: businessProfile.brand.websiteUrl,
       version: '1.0.0',
     });
   });

@@ -12,7 +12,12 @@ import {
   WhatsAppButtonAction,
 } from '@whatsapp-platform/whatsapp';
 import { getPlatformRepository, PlatformRepository } from '@whatsapp-platform/database';
-import { getConfig } from '@whatsapp-platform/config';
+import {
+  getConfig,
+  getBusinessProfile,
+  buildBusinessSystemPrompt,
+  BusinessProfile,
+} from '@whatsapp-platform/config';
 
 const logger = createLogger({ name: 'support-orchestrator' });
 
@@ -38,6 +43,7 @@ export interface SupportOrchestratorOptions {
   aiProvider?: AiProvider;
   whatsappProvider?: WhatsAppProvider;
   platformRepository?: PlatformRepository;
+  businessProfile?: BusinessProfile;
 }
 
 export class SupportOrchestrator {
@@ -45,20 +51,17 @@ export class SupportOrchestrator {
   private aiProvider: AiProvider;
   private whatsappProvider: WhatsAppProvider;
   private platformRepo: PlatformRepository;
+  private businessProfile: BusinessProfile;
+  private defaultButtons: WhatsAppButtonAction[];
 
   constructor(options: SupportOrchestratorOptions = {}) {
     this.ecommerceAdapter = options.ecommerceAdapter || createEcommerceAdapter();
     this.aiProvider = options.aiProvider || createAiProvider();
     this.whatsappProvider = options.whatsappProvider || createWhatsAppProvider();
     this.platformRepo = options.platformRepository || getPlatformRepository();
+    this.businessProfile = options.businessProfile || getBusinessProfile();
+    this.defaultButtons = this.businessProfile.quickButtons;
   }
-
-  // Common quick-reply action buttons
-  private defaultButtons: WhatsAppButtonAction[] = [
-    { id: 'btn_browse_catalog', title: '🛒 Browse Treats' },
-    { id: 'btn_track_order', title: '📦 Track on Web' },
-    { id: 'btn_talk_human', title: '🙋 Talk to Agent' },
-  ];
 
   // Regex patterns for human escalation
   private escalationRegex =
@@ -183,7 +186,7 @@ export class SupportOrchestrator {
             type: 'text',
             to: config.ADMIN_ALERT_PHONE_NUMBER,
             body:
-              `🚨 *Mintara Bites - Support Escalation Alert*\n\n` +
+              `🚨 *${this.businessProfile.brand.name} - Support Escalation Alert*\n\n` +
               `• *Customer:* ${customerName} (+${fromPhone})\n` +
               `• *Ticket ID:* ${ticket.id}\n` +
               `• *Message:* "${rawText}"\n` +
@@ -197,8 +200,8 @@ export class SupportOrchestrator {
 
       const escalationMessage =
         `Hello ${customerName}! 🙏\n\n` +
-        `I have flagged this for our human support team at Mintara Bites. A support representative will take over this chat shortly to assist you personally.\n\n` +
-        `You can also reach us directly via email at contact@mintarabites.com.\n\n` +
+        `I have flagged this for our human support team at ${this.businessProfile.brand.name}. A support representative will take over this chat shortly to assist you personally.\n\n` +
+        `You can also reach us directly via email at ${this.businessProfile.brand.supportEmail}.\n\n` +
         `*(To resume automated answers anytime, reply with "start" or tap below).*`;
 
       await this.whatsappProvider.sendMessage({
@@ -236,7 +239,7 @@ export class SupportOrchestrator {
       const redirectMessage =
         `Hi ${customerName}! 📦\n\n` +
         `For real-time delivery status and live courier tracking, please check your order dashboard directly on our store:\n` +
-        `👉 https://mintarabites.com/account/orders\n\n` +
+        `👉 ${this.businessProfile.brand.orderTrackingUrl}\n\n` +
         `*(For your privacy, account security, and real-time carrier sync, live delivery tracking is viewed directly on our web dashboard rather than WhatsApp).* \n\n` +
         `Feel free to ask if you have any questions about our products, ingredients, or storage! ✨`;
 
@@ -269,42 +272,6 @@ export class SupportOrchestrator {
     // -------------------------------------------------------------------------
     // 6. Interactive Catalog Browse Action
     // -------------------------------------------------------------------------
-    const defaultMintaraProducts = [
-      {
-        title: 'Artisanal Paan Mukhwas',
-        category: 'Paan Mukhwas',
-        price: '₹149 (100g) / ₹249 (200g)',
-        description:
-          'Traditional Calcuttia paan leaf infusion with natural gulkand, fennel & roasted seeds. 100% supari-free. Keep refrigerated to maintain crispness and aroma.',
-      },
-      {
-        title: 'Seeds Fusion (Regular & Lime)',
-        category: 'Wholesome Seeds',
-        price: '₹129 (100g) / ₹219 (200g)',
-        description:
-          '6-seed powerhouse blend (white & black sesame, pumpkin, watermelon, sunflower, flax) lightly salted or zesty lime roasted.',
-      },
-      {
-        title: 'Coconut Crunch',
-        category: 'Sweet Digestive',
-        price: '₹139 (100g) / ₹239 (200g)',
-        description:
-          'Toasted coconut flakes, chocolate-coated sesame, and crisp dhanadal.',
-      },
-      {
-        title: 'Mintara Trio Pack',
-        category: 'Combos',
-        price: '₹499 (350g)',
-        description: 'Curated 3-flavour collection in an airtight gift box.',
-      },
-      {
-        title: 'Family Feast Pack',
-        category: 'Combos',
-        price: '₹699 (700g)',
-        description: 'Best-value large family pack with FREE shipping.',
-      },
-    ];
-
     if (buttonId === 'btn_browse_catalog') {
       const activeProducts = await this.ecommerceAdapter.getAllActiveProducts();
       const productList =
@@ -312,15 +279,14 @@ export class SupportOrchestrator {
           ? activeProducts
               .map((p) => `• *${p.title}* (${p.category}): ₹${p.variants[0]?.salePrice || 'N/A'}`)
               .join('\n')
-          : defaultMintaraProducts
+          : this.businessProfile.products
               .map((p) => `• *${p.title}* (${p.category}): ${p.price}`)
               .join('\n');
 
       const catalogMsg =
-        `Here are our signature handcrafted artisanal mukhwas: 🌿\n\n` +
+        `${this.businessProfile.catalogBrowse.header}\n\n` +
         `${productList}\n\n` +
-        `All treats are *100% supari-free* and *tobacco-free*!\n` +
-        `Explore and order online: https://mintarabites.com`;
+        `${this.businessProfile.catalogBrowse.footer}`;
 
       await this.whatsappProvider.sendMessage({
         type: 'interactive',
@@ -344,7 +310,7 @@ export class SupportOrchestrator {
     }
 
     // -------------------------------------------------------------------------
-    // 7. Multi-Turn AI Support Answer using Gemini 3.5 Flash Lite
+    // 7. Multi-Turn AI Support Answer using Gemini
     // -------------------------------------------------------------------------
     const activeProducts = await this.ecommerceAdapter.getAllActiveProducts();
 
@@ -361,10 +327,10 @@ export class SupportOrchestrator {
               return `* ${p.title} (${p.category}):\n  Description: ${p.description}\n  Refrigeration required: ${p.requiresRefrigeration ? 'YES (preserve crispness & aroma)' : 'No'}\n  Benefits: ${(p.benefits || []).join(', ')}\n  Ingredients: ${(p.ingredients || []).join(', ')}\n  Variants:\n${variantsStr}`;
             })
             .join('\n\n')
-        : defaultMintaraProducts
+        : this.businessProfile.products
             .map(
               (p) =>
-                `* ${p.title} (${p.category}):\n  Description: ${p.description}\n  Pricing: ${p.price}`,
+                `* ${p.title} (${p.category}):\n  Description: ${p.description}\n  Pricing: ${p.price}\n  Refrigeration required: ${p.requiresRefrigeration ? 'YES' : 'No'}`,
             )
             .join('\n\n');
 
@@ -377,27 +343,10 @@ export class SupportOrchestrator {
       customerContextStr += `\nPast Orders Count: ${pastOrders.length}\nMost Recent Order: ${recentOrder.orderNumber || 'N/A'} (Items: ${itemsList}, Total: ₹${recentOrder.totalAmount})`;
     }
 
-    const systemPrompt = `You are the friendly, helpful WhatsApp AI Assistant for "Mintara Bites" (based in Surat, Gujarat), a premium brand of handcrafted, artisanal mukhwas and digestive treats.
-
-Brand Core Highlights:
-- 100% SUPARI & ARECA NUT FREE. 100% TOBACCO FREE.
-- Pure natural ingredients: natural gulkand, sweet fennel (variyali), roasted coriander seeds (dhanadal), wholesome seeds.
-- Paan Mukhwas requires refrigeration to preserve its crisp texture and authentic aroma.
-- Seeds Fusion is a powerhouse blend of 6 seeds (white sesame, black sesame, pumpkin, watermelon, sunflower, flax) available in Regular and Lime.
-- Coconut Crunch is chocolate-coated sesame, toasted coconut flakes, and dhanadal.
-- Combos: Mintara Trio Pack (350g @ ₹499), Family Feast Pack (700g @ ₹699 with FREE Delivery).
-
-STRICT INSTRUCTIONS:
-1. NEVER reveal or look up carrier/delivery tracking numbers or live shipment status on WhatsApp. If asked about delivery or tracking, instruct the user to visit https://mintarabites.com/account/orders.
-2. Tone: Warm, respectful, authentic, and concise. Format with WhatsApp markdown (*bold*, emoji accents, short bullet points).
-3. If the customer asks questions about ingredients, allergens, refrigeration, pricing, or recommendations, answer accurately using the Product Catalog below.
-4. Keep replies within 2-3 short paragraphs suitable for mobile messaging.
-
-CUSTOMER CONTEXT:
-${customerContextStr}
-
-CURRENT PRODUCT CATALOG:
-${productCatalogContext}`;
+    const systemPrompt = buildBusinessSystemPrompt({
+      customerContext: customerContextStr,
+      productCatalogContext,
+    });
 
     // Load recent multi-turn conversation messages
     const recentMessages = await this.platformRepo.getRecentMessages(fromPhone, 6);
@@ -445,8 +394,8 @@ ${productCatalogContext}`;
       logger.error({ err, fromPhone }, 'Failed to generate and send AI response');
 
       const fallbackMsg =
-        `Thank you for contacting Mintara Bites! 🙏\n\n` +
-        `We received your message and our team is looking into it. If you need immediate assistance, please visit https://mintarabites.com or email contact@mintarabites.com.`;
+        `Thank you for contacting ${this.businessProfile.brand.name}! 🙏\n\n` +
+        `We received your message and our team is looking into it. If you need immediate assistance, please visit ${this.businessProfile.brand.websiteUrl} or email ${this.businessProfile.brand.supportEmail}.`;
 
       await this.whatsappProvider.sendMessage({
         type: 'text',

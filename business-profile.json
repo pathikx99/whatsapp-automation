@@ -1,0 +1,108 @@
+{
+  "brand": {
+    "name": "Mintara Bites",
+    "legalName": "Mintara Bites",
+    "location": "Surat, Gujarat, India",
+    "fssaiNumber": "20726031000436",
+    "tagline": "A Perfect Finish to Every Meal | 100% Supari & Tobacco Free Handcrafted Mukhwas",
+    "description": "Mintara Bites is a premium artisanal brand based in Surat, Gujarat, crafting 100% supari-free, tobacco-free Indian mouth fresheners and digestive treats packed fresh on order.",
+    "websiteUrl": "https://mintarabites.com",
+    "orderTrackingUrl": "https://mintarabites.com/account/orders",
+    "instagram": "@mintarabites",
+    "instagramUrl": "https://instagram.com/mintarabites",
+    "supportEmail": "contact@mintarabites.com",
+    "supportPhone": "+91 94292 43344"
+  },
+  "persona": {
+    "role": "WhatsApp AI Concierge & Customer Assistant",
+    "tone": "Warm, respectful, welcoming, authentic, and concise. Format with WhatsApp markdown (*bold*, emoji accents, short readable paragraphs).",
+    "rules": [
+      "Strictly DO NOT send or look up live courier tracking numbers or carrier status on WhatsApp. For real-time carrier tracking and privacy, always redirect customers to check their order dashboard on the website.",
+      "Always emphasize that our products are 100% supari-free (no areca nut) and 100% tobacco-free.",
+      "If the customer asks about storage or refrigeration, clarify that Paan Mukhwas contains pure natural gulkand and must be refrigerated upon arrival to preserve crispness and aroma. Seeds Fusion and Coconut Crunch can be kept at room temperature in an airtight jar.",
+      "Highlight that treats are made fresh on order and packed right before dispatch.",
+      "For wholesale, weddings, or corporate bulk gifting inquiries, invite them to share their requirement or connect with human support.",
+      "Keep answers within 2-3 short, mobile-friendly paragraphs."
+    ]
+  },
+  "brandHighlights": [
+    "100% SUPARI & ARECA NUT FREE. 100% TOBACCO FREE.",
+    "Made fresh on order: Packed right before dispatch so treats retain crispness and authentic aroma.",
+    "FSSAI Registered Indian Brand (Reg. No. 20726031000436) based in Surat, Gujarat.",
+    "Pure natural ingredients: Natural gulkand, sweet fennel (variyali), roasted coriander seeds (dhanadal), and wholesome seeds.",
+    "Paan Mukhwas: Infusion of Calcuttia betel leaves and natural rose gulkand. Requires refrigeration.",
+    "Seeds Fusion: 6-seed powerhouse (white sesame, black sesame, pumpkin, watermelon, sunflower, flax) in Regular and Lime.",
+    "Coconut Crunch: Toasted coconut flakes, chocolate-coated sesame, and crisp dhanadal.",
+    "Combos: Mintara Trio Pack (350g @ ₹399), Family Feast Pack (700g @ ₹699 with FREE Express Delivery across India).",
+    "FREE Pan-India express delivery on all orders ₹699 and above.",
+    "Instagram: @mintarabites (https://instagram.com/mintarabites)."
+  ],
+  "quickButtons": [
+    { "id": "btn_browse_catalog", "title": "🛒 Browse Treats" },
+    { "id": "btn_track_order", "title": "📦 Track on Web" },
+    { "id": "btn_talk_human", "title": "🙋 Talk to Agent" }
+  ],
+  "catalogBrowse": {
+    "header": "Here are our signature handcrafted artisanal mukhwas: 🌿",
+    "footer": "All treats are *100% supari-free* and *tobacco-free*!\nExplore & order online: https://mintarabites.com\nFollow us on Instagram: @mintarabites"
+  },
+  "products": [
+    {
+      "title": "Artisanal Paan Mukhwas",
+      "category": "Paan Mukhwas",
+      "price": "₹149 (150g) / ₹249 (300g) / ₹399 (500g)",
+      "description": "Traditional Calcuttia paan leaf infusion with natural rose gulkand, sweet fennel & roasted dhanadal. 100% supari-free. Keep refrigerated upon arrival.",
+      "requiresRefrigeration": true
+    },
+    {
+      "title": "Seeds Fusion (Regular & Lime)",
+      "category": "Wholesome Seeds",
+      "price": "₹149 (100g) / ₹249 (200g)",
+      "description": "6-seed powerhouse blend (white & black sesame, pumpkin, watermelon, sunflower, flax) lightly salted or zesty lime roasted.",
+      "requiresRefrigeration": false
+    },
+    {
+      "title": "Coconut Crunch",
+      "category": "Sweet Digestive",
+      "price": "₹149 (100g) / ₹249 (200g)",
+      "description": "Toasted coconut flakes, rich chocolate-coated sesame, and crisp roasted dhanadal for a guilt-free sweet crunch.",
+      "requiresRefrigeration": false
+    },
+    {
+      "title": "Mintara Trio Pack",
+      "category": "Combos & Gift Packs",
+      "price": "₹399 (350g)",
+      "description": "Signature collection featuring Paan Mukhwas (150g), Seeds Fusion (100g), and Coconut Crunch (100g) in an airtight gift box.",
+      "requiresRefrigeration": true
+    },
+    {
+      "title": "Family Feast Pack",
+      "category": "Combos & Gift Packs",
+      "price": "₹699 (700g)",
+      "description": "Large sharing pack (300g Paan + 200g Seeds + 200g Coconut) with FREE Pan-India express delivery.",
+      "requiresRefrigeration": true
+    }
+  ],
+  "faqs": [
+    {
+      "question": "Does Paan Mukhwas need refrigeration?",
+      "answer": "Yes! Because it is crafted with pure natural rose gulkand and zero chemical preservatives, refrigerate it immediately upon arrival to preserve its crisp texture and authentic aroma."
+    },
+    {
+      "question": "Is it really 100% supari and tobacco free?",
+      "answer": "Yes, absolutely 100%. We do not use areca nut (supari), tobacco, or harmful chemical additives. Our treats are safe for the whole family."
+    },
+    {
+      "question": "How can I track my order delivery?",
+      "answer": "You can view real-time courier tracking and dispatch updates on our web portal at https://mintarabites.com/account/orders."
+    },
+    {
+      "question": "What is the delivery charge?",
+      "answer": "Orders ₹699 and above receive FREE express delivery across India! You can also use promo code MINFREE for free delivery."
+    },
+    {
+      "question": "Where can I follow Mintara Bites on social media?",
+      "answer": "Connect with us on Instagram at @mintarabites (https://instagram.com/mintarabites) for behind-the-scenes, fresh batch releases, and special deals!"
+    }
+  ]
+}

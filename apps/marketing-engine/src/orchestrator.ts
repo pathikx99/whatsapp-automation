@@ -7,6 +7,7 @@ import {
 import { createAiProvider, AiProvider } from '@whatsapp-platform/ai';
 import { createWhatsAppProvider, WhatsAppProvider } from '@whatsapp-platform/whatsapp';
 import { getPlatformRepository, PlatformRepository } from '@whatsapp-platform/database';
+import { getBusinessProfile, BusinessProfile } from '@whatsapp-platform/config';
 
 const logger = createLogger({ name: 'marketing-orchestrator' });
 
@@ -27,6 +28,7 @@ export interface MarketingOrchestratorOptions {
   aiProvider?: AiProvider;
   whatsappProvider?: WhatsAppProvider;
   platformRepository?: PlatformRepository;
+  businessProfile?: BusinessProfile;
 }
 
 export class MarketingOrchestrator {
@@ -34,12 +36,14 @@ export class MarketingOrchestrator {
   private aiProvider: AiProvider;
   private whatsappProvider: WhatsAppProvider;
   private platformRepo: PlatformRepository;
+  private businessProfile: BusinessProfile;
 
   constructor(options: MarketingOrchestratorOptions = {}) {
     this.ecommerceAdapter = options.ecommerceAdapter || createEcommerceAdapter();
     this.aiProvider = options.aiProvider || createAiProvider();
     this.whatsappProvider = options.whatsappProvider || createWhatsAppProvider();
     this.platformRepo = options.platformRepository || getPlatformRepository();
+    this.businessProfile = options.businessProfile || getBusinessProfile();
   }
 
   /**
@@ -165,14 +169,14 @@ export class MarketingOrchestrator {
         break;
     }
 
-    const systemPrompt = `You are an expert, respectful WhatsApp marketing copywriter for Mintara Bites (Surat, Gujarat) — handcrafted, 100% supari-free artisanal mukhwas & mouth fresheners.
+    const systemPrompt = `You are an expert, respectful WhatsApp marketing copywriter for "${this.businessProfile.brand.name}" (${this.businessProfile.brand.location}) — ${this.businessProfile.brand.tagline}.
 
 Guidelines:
 - Length: Max 3-4 short, punchy sentences.
 - Tone: Warm, appetizing, friendly, non-spammy.
 - Format: Clean WhatsApp styling (use *bold* for product names/codes, subtle emojis).
-- Include store link: https://mintarabites.com
-- Do not make false health claims; highlight 100% supari-free, authentic freshness, and smooth post-meal digestion.`;
+- Include store link: ${this.businessProfile.brand.websiteUrl}
+- Brand Highlights: ${(this.businessProfile.brandHighlights || []).slice(0, 3).join('; ')}`;
 
     const userPrompt = `Draft a personalized WhatsApp message for:
 Customer Name: ${customerName}

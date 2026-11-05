@@ -225,3 +225,6 @@ export function getPlatformSupabaseConfig(config: AppConfig = getConfig()): {
   const publishableKey = config.SUPABASE_PUBLISHABLE_KEY;
   return { url, publishableKey, secretKey };
 }
+
+export * from './business-profile.js';
+

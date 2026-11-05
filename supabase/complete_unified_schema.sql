@@ -1298,3 +1298,4 @@ GRANT ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA public TO service_role;
 -- 9. RELOAD POSTGREST SCHEMA CACHE
 -- ------------------------------------------------------------------------------
 NOTIFY pgrst, 'reload schema';
+
