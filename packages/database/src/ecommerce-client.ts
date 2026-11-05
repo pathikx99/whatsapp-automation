@@ -16,13 +16,20 @@ let ecommerceRoPool: pg.Pool | null = null;
 export function createEcommerceSupabaseClient(): SupabaseClient {
   if (!ecommerceSupabaseClient) {
     const config = getConfig();
+    const apiKey = config.ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY || config.ECOMMERCE_SUPABASE_ANON_KEY;
     ecommerceSupabaseClient = createClient(
       config.ECOMMERCE_SUPABASE_URL,
-      config.ECOMMERCE_SUPABASE_ANON_KEY,
+      apiKey,
       {
         auth: {
           persistSession: false,
           autoRefreshToken: false,
+        },
+        global: {
+          headers: {
+            apikey: apiKey,
+            Authorization: `Bearer ${apiKey}`,
+          },
         },
       },
     );
@@ -79,3 +86,4 @@ export async function closeEcommerceDbPool(): Promise<void> {
     ecommerceRoPool = null;
   }
 }
+

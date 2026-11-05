@@ -77,25 +77,32 @@ Edit `.env` to verify your local settings. By default, the template is preconfig
 This platform utilizes local Supabase (running via Docker) for all development and automated integration testing.
 
 ### Start Local Supabase
+
 ```bash
 pnpm db:start
 ```
+
 This spins up PostgreSQL, Supabase Studio, Inbucket email testing, and the Auth/Storage engines.
 
 ### Check Local Supabase Status
+
 ```bash
 pnpm db:status
 ```
+
 Outputs local API keys, PostgreSQL ports (default `54322`), and the Supabase Studio dashboard URL (default `http://localhost:54323`).
 
 ### Run Migrations & Reset Local Database
+
 ```bash
 pnpm db:reset
 ```
+
 > [!NOTE]
 > `pnpm db:reset` is protected by `scripts/db-guard.ts`. It verifies that the database URL points strictly to a local address (`localhost` or `127.0.0.1`) and halts immediately if executed against any remote host or production environment.
 
 ### Stop Local Supabase
+
 ```bash
 pnpm db:stop
 ```
@@ -120,7 +127,7 @@ Initial migration: `supabase/migrations/20261105000000_platform_schemas.sql`.
 To connect the platform to your existing Next.js/Supabase ecommerce store:
 
 1. Configure `ECOMMERCE_SUPABASE_URL` and `ECOMMERCE_SUPABASE_ANON_KEY` in `.env`.
-2. *(Optional)* If using direct database querying, configure `ECOMMERCE_DATABASE_URL_RO` using a **read-only** database role.
+2. _(Optional)_ If using direct database querying, configure `ECOMMERCE_DATABASE_URL_RO` using a **read-only** database role.
 3. **Safety Guarantee**:
    - The platform strictly treats the remote ecommerce store as an external, read-only system.
    - Platform migrations are never executed against the remote database.
@@ -131,6 +138,7 @@ To connect the platform to your existing Next.js/Supabase ecommerce store:
 ## Running Applications
 
 ### Start the Fastify API (Development)
+
 ```bash
 pnpm dev
 # Or target specifically:
@@ -140,10 +148,12 @@ pnpm --filter @whatsapp-platform/api dev
 The API starts on `http://localhost:3000`.
 
 #### Endpoints:
+
 - `GET /health`: Liveness probe (checks process state, uptime, and memory).
 - `GET /ready`: Readiness probe (verifies configuration and active local database connection).
 
 ### Start Engines & Worker (Independent Run)
+
 ```bash
 # Marketing Engine
 pnpm --filter @whatsapp-platform/marketing-engine dev
@@ -160,11 +170,13 @@ pnpm --filter @whatsapp-platform/worker dev
 ## Verification & Testing
 
 ### Run All Integration Tests
+
 ```bash
 pnpm test
 ```
 
 ### Type Checking & Code Quality
+
 ```bash
 # Type checking across all workspaces
 pnpm typecheck
@@ -191,9 +203,10 @@ pnpm lint
 ## Milestone Boundaries
 
 This repository represents the **Foundation Milestone**:
+
 - ✅ Multi-schema database architecture & reversible migrations.
 - ✅ Local vs. remote database dual-client isolation with safety guardrails.
 - ✅ Fastify backend API with `/health`, `/ready`, CORS, structured logging, and graceful shutdown.
 - ✅ Independent application boundaries for API, Marketing Engine, Support Engine, and Worker.
 - ✅ Strict environment validation with Zod and zero secret leakage.
-- ⏳ *Marketing engine campaigns, AI conversation processing, live WhatsApp Cloud API integration, and admin dashboards will be implemented in subsequent milestones.*
+- ⏳ _Marketing engine campaigns, AI conversation processing, live WhatsApp Cloud API integration, and admin dashboards will be implemented in subsequent milestones._

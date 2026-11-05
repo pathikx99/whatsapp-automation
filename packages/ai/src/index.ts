@@ -55,12 +55,63 @@ export function createAiProvider(): AiProvider {
         };
       }
 
-      logger.info({ model: config.AI_MODEL }, 'Generating AI completion');
-      // Live integration with OpenAI / Anthropic / Gemini will be implemented in future milestone
-      return {
-        content: `Response generated using ${config.AI_PROVIDER}`,
-        model: config.AI_MODEL || 'default-model',
-      };
+      const model = request.model || config.AI_MODEL || 'gemini-3.5-flash-lite';
+      logger.info({ model }, 'Generating AI completion via Gemini');
+
+      try {
+        // Separate system instructions from conversation contents
+        const systemMessages = request.messages.filter((m) => m.role === 'system');
+        const chatMessages = request.messages.filter((m) => m.role !== 'system');
+
+        const systemInstruction = systemMessages.length > 0
+          ? { parts: systemMessages.map((m) => ({ text: m.content })) }
+          : undefined;
+
+        const contents = chatMessages.map((m) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        }));
+
+        const payload: Record<string, unknown> = { contents };
+        if (systemInstruction) {
+          payload.systemInstruction = systemInstruction;
+        }
+        if (request.temperature !== undefined) {
+          payload.generationConfig = { temperature: request.temperature };
+        }
+
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.AI_API_KEY}`;
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          logger.error({ status: response.status, body: errText, model }, 'Gemini API call failed');
+          throw new Error(`Gemini API error (${response.status}): ${errText}`);
+        }
+
+        const data = (await response.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+          usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+        };
+
+        const replyContent = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return {
+          content: replyContent,
+          model,
+          usage: {
+            promptTokens: data.usageMetadata?.promptTokenCount || 0,
+            completionTokens: data.usageMetadata?.candidatesTokenCount || 0,
+            totalTokens: data.usageMetadata?.totalTokenCount || 0,
+          },
+        };
+      } catch (err) {
+        logger.error({ err, model }, 'Failed generating AI completion');
+        throw err;
+      }
     },
   };
 }

@@ -65,10 +65,7 @@ const FORBIDDEN_SQL_KEYWORDS = [
   'REPLACE',
 ];
 
-const FORBIDDEN_PATTERN = new RegExp(
-  `\\b(${FORBIDDEN_SQL_KEYWORDS.join('|')})\\b`,
-  'i',
-);
+const FORBIDDEN_PATTERN = new RegExp(`\\b(${FORBIDDEN_SQL_KEYWORDS.join('|')})\\b`, 'i');
 
 export function assertReadOnlySql(sql: string): void {
   const trimmed = sql.trim();

@@ -39,4 +39,10 @@ async function start() {
   }
 }
 
-void start();
+export * from './orchestrator.js';
+
+// If run directly as a standalone process
+if (process.argv[1]?.includes('support-engine')) {
+  void start();
+}
+

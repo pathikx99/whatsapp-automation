@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { buildServer } from '../../apps/api/src/server.js';
-import { resetConfigCache } from '../../packages/config/src/index.js';
+import { resetConfigCache } from '@whatsapp-platform/config';
 
 describe('API Health Endpoint (Liveness)', () => {
   let app: FastifyInstance;

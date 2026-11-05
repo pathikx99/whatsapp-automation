@@ -31,7 +31,8 @@ export interface LoggerConfig {
 
 export function createLogger(config: LoggerConfig = {}): Logger {
   const level = config.level || process.env.LOG_LEVEL || 'info';
-  const isPretty = config.pretty ?? (process.env.NODE_ENV !== 'production' && process.env.LOG_PRETTY === 'true');
+  const isPretty =
+    config.pretty ?? (process.env.NODE_ENV !== 'production' && process.env.LOG_PRETTY === 'true');
 
   const options: LoggerOptions = {
     name: config.name || 'whatsapp-platform',

@@ -3,8 +3,8 @@ import {
   isLocalHost,
   assertLocalDatabaseUrl,
   assertReadOnlySql,
-} from '../../packages/database/src/safety.js';
-import { DatabaseSafetyError } from '../../packages/shared/src/errors.js';
+  DatabaseSafetyError,
+} from '@whatsapp-platform/database';
 
 describe('Database Safety & Isolation Guards', () => {
   describe('Host Verification (isLocalHost)', () => {
@@ -63,16 +63,26 @@ describe('Database Safety & Isolation Guards', () => {
     it('should permit valid read-only query statements', () => {
       expect(() => assertReadOnlySql('SELECT * FROM orders WHERE id = $1')).not.toThrow();
       expect(() => assertReadOnlySql('SELECT count(*) FROM customers')).not.toThrow();
-      expect(() => assertReadOnlySql('WITH recent AS (SELECT * FROM orders) SELECT * FROM recent')).not.toThrow();
+      expect(() =>
+        assertReadOnlySql('WITH recent AS (SELECT * FROM orders) SELECT * FROM recent'),
+      ).not.toThrow();
     });
 
     it('should reject destructive or modifying SQL statements with DatabaseSafetyError', () => {
-      expect(() => assertReadOnlySql('DELETE FROM orders WHERE id = 1')).toThrow(DatabaseSafetyError);
-      expect(() => assertReadOnlySql('INSERT INTO orders (id) VALUES (1)')).toThrow(DatabaseSafetyError);
-      expect(() => assertReadOnlySql('UPDATE customers SET status = "inactive"')).toThrow(DatabaseSafetyError);
+      expect(() => assertReadOnlySql('DELETE FROM orders WHERE id = 1')).toThrow(
+        DatabaseSafetyError,
+      );
+      expect(() => assertReadOnlySql('INSERT INTO orders (id) VALUES (1)')).toThrow(
+        DatabaseSafetyError,
+      );
+      expect(() => assertReadOnlySql('UPDATE customers SET status = "inactive"')).toThrow(
+        DatabaseSafetyError,
+      );
       expect(() => assertReadOnlySql('DROP TABLE products CASCADE')).toThrow(DatabaseSafetyError);
       expect(() => assertReadOnlySql('TRUNCATE orders')).toThrow(DatabaseSafetyError);
-      expect(() => assertReadOnlySql('ALTER TABLE customers ADD COLUMN balance int')).toThrow(DatabaseSafetyError);
+      expect(() => assertReadOnlySql('ALTER TABLE customers ADD COLUMN balance int')).toThrow(
+        DatabaseSafetyError,
+      );
     });
   });
 });

@@ -11,12 +11,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@whatsapp-platform/ai": "workspace:*",
     "@whatsapp-platform/config": "workspace:*",
     "@whatsapp-platform/database": "workspace:*",
-    "@whatsapp-platform/shared": "workspace:*"
+    "@whatsapp-platform/ecommerce-adapter": "workspace:*",
+    "@whatsapp-platform/shared": "workspace:*",
+    "@whatsapp-platform/whatsapp": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
     "typescript": "^5.7.3"
   }
 }
+

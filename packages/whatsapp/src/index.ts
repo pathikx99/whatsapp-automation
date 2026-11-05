@@ -1,5 +1,12 @@
+import dns from 'node:dns';
 import { createLogger } from '@whatsapp-platform/shared';
 import { getConfig } from '@whatsapp-platform/config';
+
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  // Ignore if unsupported in environment
+}
 
 export type WhatsAppMessageType = 'text' | 'template' | 'interactive' | 'media';
 
@@ -45,7 +52,10 @@ export function createWhatsAppProvider(): WhatsAppProvider {
 
     async sendMessage(message: OutboundWhatsAppMessage): Promise<WhatsAppSendResult> {
       if (!isConfigured) {
-        logger.info({ recipient: message.to }, 'WhatsApp provider mock: message logged (unconfigured provider)');
+        logger.info(
+          { recipient: message.to },
+          'WhatsApp provider mock: message logged (unconfigured provider)',
+        );
         return {
           messageId: `mock_${Date.now()}_${Math.random().toString(36).substring(7)}`,
           status: 'simulated',
@@ -54,14 +64,68 @@ export function createWhatsAppProvider(): WhatsAppProvider {
         };
       }
 
-      logger.info({ recipient: message.to, type: message.type }, 'Sending WhatsApp message');
-      // Integration with official Cloud API or selected provider will be implemented in future milestone
-      return {
-        messageId: `wa_${Date.now()}`,
-        status: 'queued',
-        recipient: message.to,
-        timestamp: new Date().toISOString(),
-      };
+      logger.info({ recipient: message.to, type: message.type }, 'Sending WhatsApp message via Cloud API');
+
+      try {
+        const cleanTo = message.to.replace(/\D/g, '');
+        const payload: Record<string, unknown> = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: cleanTo,
+        };
+
+        if (message.type === 'text') {
+          payload.type = 'text';
+          payload.text = {
+            preview_url: false,
+            body: message.body,
+          };
+        } else if (message.type === 'template') {
+          payload.type = 'template';
+          payload.template = {
+            name: message.templateName,
+            language: { code: message.languageCode || 'en' },
+            components: message.parameters && message.parameters.length > 0
+              ? [
+                  {
+                    type: 'body',
+                    parameters: message.parameters,
+                  },
+                ]
+              : undefined,
+          };
+        }
+
+        const endpoint = `https://graph.facebook.com/v26.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${config.WHATSAPP_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errBody = await response.text();
+          logger.error({ status: response.status, body: errBody, recipient: cleanTo }, 'WhatsApp API dispatch failed');
+          throw new Error(`WhatsApp API error (${response.status}): ${errBody}`);
+        }
+
+        const data = (await response.json()) as { messages?: Array<{ id: string }> };
+        const messageId = data.messages?.[0]?.id || `wa_${Date.now()}`;
+
+        logger.info({ messageId, recipient: cleanTo }, 'WhatsApp message successfully dispatched');
+        return {
+          messageId,
+          status: 'sent',
+          recipient: cleanTo,
+          timestamp: new Date().toISOString(),
+        };
+      } catch (err) {
+        logger.error({ err, recipient: message.to }, 'Failed to dispatch WhatsApp message');
+        throw err;
+      }
     },
 
     verifyWebhook(mode: string, token: string): boolean {

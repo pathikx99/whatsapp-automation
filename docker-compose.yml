@@ -1,0 +1,11 @@
+services:
+  whatsapp-platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: whatsapp-platform-api
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env

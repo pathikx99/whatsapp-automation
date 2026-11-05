@@ -3,9 +3,23 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import fs from 'node:fs';
 
-// Attempt to load .env from workspace root if available
-const rootEnvPath = path.resolve(process.cwd(), '.env');
-if (fs.existsSync(rootEnvPath)) {
+// Search upwards for .env (handles monorepo workspaces where cwd may be apps/* or packages/*)
+function findEnvPath(): string | undefined {
+  let currentDir = process.cwd();
+  for (let i = 0; i < 5; i++) {
+    const candidate = path.join(currentDir, '.env');
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = path.dirname(currentDir);
+    if (parent === currentDir) break;
+    currentDir = parent;
+  }
+  return undefined;
+}
+
+const rootEnvPath = findEnvPath();
+if (rootEnvPath) {
   dotenv.config({ path: rootEnvPath });
 } else {
   dotenv.config(); // fallback to default dotenv resolution
@@ -42,9 +56,7 @@ export const envSchema = z.object({
     ),
 
   // Logging
-  LOG_LEVEL: z
-    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
-    .default('info'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   LOG_PRETTY: z
     .string()
     .optional()
@@ -69,6 +81,7 @@ export const envSchema = z.object({
   // Existing Ecommerce Supabase (Read-Only access, separate environment)
   ECOMMERCE_SUPABASE_URL: z.string().url('ECOMMERCE_SUPABASE_URL must be a valid URL'),
   ECOMMERCE_SUPABASE_ANON_KEY: z.string().min(1, 'ECOMMERCE_SUPABASE_ANON_KEY is required'),
+  ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   ECOMMERCE_DATABASE_URL_RO: z
     .string()
     .optional()

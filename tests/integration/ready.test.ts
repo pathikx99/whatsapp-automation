@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
 import { buildServer } from '../../apps/api/src/server.js';
-import { resetConfigCache } from '../../packages/config/src/index.js';
+import { resetConfigCache } from '@whatsapp-platform/config';
 
 describe('API Readiness Endpoint', () => {
   let appSuccess: FastifyInstance;
@@ -13,7 +13,8 @@ describe('API Readiness Endpoint', () => {
     process.env.API_PORT = '3000';
     process.env.LOCAL_SUPABASE_URL = 'http://127.0.0.1:54321';
     process.env.LOCAL_SUPABASE_ANON_KEY = 'test-anon-key';
-    process.env.LOCAL_DATABASE_URL = 'postgresql://postgres:secretpassword@127.0.0.1:54322/postgres';
+    process.env.LOCAL_DATABASE_URL =
+      'postgresql://postgres:secretpassword@127.0.0.1:54322/postgres';
     process.env.ECOMMERCE_SUPABASE_URL = 'https://ecommerce.supabase.co';
     process.env.ECOMMERCE_SUPABASE_ANON_KEY = 'test-ecommerce-key';
 

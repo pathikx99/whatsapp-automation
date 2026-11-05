@@ -62,6 +62,7 @@ All platform state is isolated into four dedicated schemas within the platform d
    - Manages WhatsApp message dispatch queues, delivery receipts (`sent`, `delivered`, `read`), and inbound webhook payloads.
 
 ### Role & Access Isolation:
+
 - `postgres` & `service_role`: Own and execute migrations across platform schemas.
 - `anon` & `authenticated`: Default permissions are explicitly revoked from platform internal schemas to enforce least-privilege security.
 
@@ -71,15 +72,16 @@ All platform state is isolated into four dedicated schemas within the platform d
 
 A critical architectural constraint is protecting the remote ecommerce production database:
 
-| Dimension | Local Supabase Database | Remote Ecommerce Supabase |
-| :--- | :--- | :--- |
-| **Role** | Platform State & Schema Ownership | External Read-Only Datasource |
-| **Permissions** | Full DDL + DML | Strictly Read-Only (SELECT queries) |
-| **Migrations** | Executed via Supabase CLI (`supabase db ...`) | **NEVER** run migrations against this database |
-| **Client Pool** | `getLocalDbPool()` | `getEcommerceReadOnlyPool()` |
-| **Safety Guard** | Verified local host (`localhost`, `127.0.0.1`) | Guarded by `assertReadOnlySql()` |
+| Dimension        | Local Supabase Database                        | Remote Ecommerce Supabase                      |
+| :--------------- | :--------------------------------------------- | :--------------------------------------------- |
+| **Role**         | Platform State & Schema Ownership              | External Read-Only Datasource                  |
+| **Permissions**  | Full DDL + DML                                 | Strictly Read-Only (SELECT queries)            |
+| **Migrations**   | Executed via Supabase CLI (`supabase db ...`)  | **NEVER** run migrations against this database |
+| **Client Pool**  | `getLocalDbPool()`                             | `getEcommerceReadOnlyPool()`                   |
+| **Safety Guard** | Verified local host (`localhost`, `127.0.0.1`) | Guarded by `assertReadOnlySql()`               |
 
 ### Safety Guardrails
+
 - **Automated Host Check**: Any migration or reset command verifies that the host matches local IP/localhost before execution.
 - **SQL Sanitization**: Any SQL intended for the ecommerce database is verified against destructive keywords (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `TRUNCATE`, `ALTER`, etc.).
 

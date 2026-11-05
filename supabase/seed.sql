@@ -1,3 +1,4 @@
 -- Local Supabase Seed File
 -- Reserved for local development and integration test seed data.
 -- Business tables will be populated here once schemas are defined in future milestones.
+

@@ -78,3 +78,4 @@ export async function checkLocalDbHealth(pool?: pg.Pool): Promise<DbHealthResult
     client.release();
   }
 }
+

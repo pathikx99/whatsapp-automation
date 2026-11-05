@@ -26,7 +26,12 @@ export class DatabaseSafetyError extends AppError {
 
 export class NotFoundError extends AppError {
   constructor(resource: string, identifier?: string | number) {
-    super(identifier ? `${resource} with ID '${identifier}' was not found` : `${resource} was not found`, 404);
+    super(
+      identifier
+        ? `${resource} with ID '${identifier}' was not found`
+        : `${resource} was not found`,
+      404,
+    );
     this.name = 'NotFoundError';
   }
 }

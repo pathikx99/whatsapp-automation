@@ -15,7 +15,9 @@
     "@fastify/helmet": "^13.0.1",
     "@whatsapp-platform/config": "workspace:*",
     "@whatsapp-platform/database": "workspace:*",
+    "@whatsapp-platform/marketing-engine": "workspace:*",
     "@whatsapp-platform/shared": "workspace:*",
+    "@whatsapp-platform/support-engine": "workspace:*",
     "fastify": "^5.2.1"
   },
   "devDependencies": {
@@ -23,3 +25,4 @@
     "typescript": "^5.7.3"
   }
 }
+

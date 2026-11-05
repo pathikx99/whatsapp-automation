@@ -50,3 +50,4 @@ BEGIN
     REVOKE ALL ON SCHEMA messaging FROM authenticated;
   END IF;
 END $$;
+

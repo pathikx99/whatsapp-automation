@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { validateConfig, ConfigurationError, isSecretField, maskSecret } from '../../packages/config/src/index.js';
+import {
+  validateConfig,
+  ConfigurationError,
+  isSecretField,
+  maskSecret,
+} from '@whatsapp-platform/config';
 
 describe('Environment Configuration Validation', () => {
   const validBaseEnv = {

@@ -5,6 +5,8 @@ import crypto from 'node:crypto';
 import { getConfig } from '@whatsapp-platform/config';
 import { checkLocalDbHealth, DbHealthResult } from '@whatsapp-platform/database';
 import { AppError } from '@whatsapp-platform/shared';
+import { SupportOrchestrator } from '@whatsapp-platform/support-engine';
+import { MarketingOrchestrator } from '@whatsapp-platform/marketing-engine';
 
 export interface ServerOptions {
   dbHealthChecker?: () => Promise<DbHealthResult>;
@@ -65,36 +67,38 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   });
 
   // Centralized Error Handling
-  app.setErrorHandler((error: Error & { statusCode?: number }, request: FastifyRequest, reply: FastifyReply) => {
-    const isAppError = error instanceof AppError;
-    const statusCode = error.statusCode || (isAppError ? error.statusCode : 500);
+  app.setErrorHandler(
+    (error: Error & { statusCode?: number }, request: FastifyRequest, reply: FastifyReply) => {
+      const isAppError = error instanceof AppError;
+      const statusCode = error.statusCode || (isAppError ? error.statusCode : 500);
 
-    request.log.error(
-      {
-        err: {
-          name: error.name,
-          message: error.message,
-          stack: config.NODE_ENV === 'development' ? error.stack : undefined,
+      request.log.error(
+        {
+          err: {
+            name: error.name,
+            message: error.message,
+            stack: config.NODE_ENV === 'development' ? error.stack : undefined,
+          },
+          requestId: request.id,
         },
+        'Request failed with error',
+      );
+
+      // In production, do not leak unexpected 500 error messages
+      const message =
+        statusCode >= 500 && config.NODE_ENV === 'production' && !isAppError
+          ? 'Internal Server Error'
+          : error.message;
+
+      reply.status(statusCode).send({
+        status: 'error',
+        statusCode,
+        error: error.name || 'InternalServerError',
+        message,
         requestId: request.id,
-      },
-      'Request failed with error',
-    );
-
-    // In production, do not leak unexpected 500 error messages
-    const message =
-      statusCode >= 500 && config.NODE_ENV === 'production' && !isAppError
-        ? 'Internal Server Error'
-        : error.message;
-
-    reply.status(statusCode).send({
-      status: 'error',
-      statusCode,
-      error: error.name || 'InternalServerError',
-      message,
-      requestId: request.id,
-    });
-  });
+      });
+    },
+  );
 
   // Liveness Check: Reports process is running
   app.get('/health', async (_req, reply) => {
@@ -135,6 +139,83 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
           database: 'disconnected',
         },
         error: 'Local database connectivity check failed',
+      });
+    }
+  });
+
+  const supportOrchestrator = new SupportOrchestrator();
+  const marketingOrchestrator = new MarketingOrchestrator();
+
+  // WhatsApp Webhook Verification (Meta Handshake)
+  app.get('/webhooks/whatsapp', async (req, reply) => {
+    const query = req.query as Record<string, string | undefined>;
+    const mode = query['hub.mode'];
+    const token = query['hub.verify_token'];
+    const challenge = query['hub.challenge'];
+
+    if (mode === 'subscribe' && token === config.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+      req.log.info('Meta WhatsApp webhook verification successful');
+      return reply.status(200).send(challenge);
+    }
+
+    req.log.warn({ mode, tokenReceived: Boolean(token) }, 'Meta WhatsApp webhook verification rejected');
+    return reply.status(403).send('Forbidden: Token mismatch');
+  });
+
+  // WhatsApp Inbound Webhook (Customer messages and status updates)
+  app.post('/webhooks/whatsapp', async (req, reply) => {
+    const body = req.body as any;
+
+    // Immediately acknowledge Meta to prevent timeout/retries
+    reply.status(200).send({ status: 'received' });
+
+    try {
+      if (body?.object === 'whatsapp_business_account' && Array.isArray(body?.entry)) {
+        for (const entry of body.entry) {
+          const changes = entry.changes || [];
+          for (const change of changes) {
+            const value = change.value;
+            if (value?.messaging_product === 'whatsapp' && Array.isArray(value?.messages)) {
+              for (const message of value.messages) {
+                if (message.type === 'text' && message.text?.body) {
+                  const contact = value.contacts?.[0];
+                  const senderName = contact?.profile?.name;
+
+                  // Process asynchronously through Support Engine
+                  void supportOrchestrator.processMessage({
+                    from: message.from,
+                    messageId: message.id,
+                    body: message.text.body,
+                    senderName,
+                    timestamp: message.timestamp,
+                  }).catch((err) => {
+                    req.log.error({ err, messageId: message.id }, 'Error in support orchestrator processMessage');
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      req.log.error({ err }, 'Error parsing inbound WhatsApp webhook payload');
+    }
+  });
+
+  // Manual or Scheduled Marketing Campaign Trigger
+  app.post('/api/marketing/trigger', async (req, reply) => {
+    try {
+      req.log.info('Marketing campaign triggered via API');
+      const report = await marketingOrchestrator.runScheduledCampaign();
+      return reply.status(200).send({
+        status: 'success',
+        report,
+      });
+    } catch (err) {
+      req.log.error({ err }, 'Error executing marketing campaign');
+      return reply.status(500).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Unknown error during marketing execution',
       });
     }
   });
