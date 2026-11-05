@@ -100,6 +100,15 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     },
   );
 
+  // Root & Health Checks
+  app.get('/', async (_req, reply) => {
+    return reply.status(200).send({
+      status: 'ok',
+      service: 'mintara-bites-whatsapp-platform',
+      version: '1.0.0',
+    });
+  });
+
   // Liveness Check: Reports process is running
   app.get('/health', async (_req, reply) => {
     return reply.status(200).send({
