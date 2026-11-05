@@ -18,6 +18,7 @@
     "@whatsapp-platform/marketing-engine": "workspace:*",
     "@whatsapp-platform/shared": "workspace:*",
     "@whatsapp-platform/support-engine": "workspace:*",
+    "@whatsapp-platform/whatsapp": "workspace:*",
     "fastify": "^5.2.1"
   },
   "devDependencies": {
@@ -25,4 +26,3 @@
     "typescript": "^5.7.3"
   }
 }
-

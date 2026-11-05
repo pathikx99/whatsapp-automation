@@ -28,12 +28,15 @@ async function start() {
     });
 
     // Schedule regular campaign evaluation every 4 hours
-    const campaignInterval = setInterval(() => {
-      logger.info('Executing scheduled campaign evaluation tick');
-      void orchestrator.runScheduledCampaign().catch((err) => {
-        logger.error({ err }, 'Scheduled campaign run encountered an error');
-      });
-    }, 4 * 60 * 60 * 1000);
+    const campaignInterval = setInterval(
+      () => {
+        logger.info('Executing scheduled campaign evaluation tick');
+        void orchestrator.runScheduledCampaign().catch((err) => {
+          logger.error({ err }, 'Scheduled campaign run encountered an error');
+        });
+      },
+      4 * 60 * 60 * 1000,
+    );
 
     registerShutdownHandler(logger, async () => {
       logger.info('Stopping Marketing Engine...');
@@ -51,4 +54,3 @@ async function start() {
 if (process.argv[1]?.includes('marketing-engine')) {
   void start();
 }
-

@@ -13,7 +13,9 @@
   "dependencies": {
     "@whatsapp-platform/config": "workspace:*",
     "@whatsapp-platform/database": "workspace:*",
-    "@whatsapp-platform/shared": "workspace:*"
+    "@whatsapp-platform/marketing-engine": "workspace:*",
+    "@whatsapp-platform/shared": "workspace:*",
+    "@whatsapp-platform/whatsapp": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",

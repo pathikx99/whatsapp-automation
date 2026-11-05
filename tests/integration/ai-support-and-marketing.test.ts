@@ -12,6 +12,12 @@ describe('AI Support and Delivery Status Guardrails', () => {
       recipient: '917490095115',
       timestamp: new Date().toISOString(),
     }),
+    sendInteractiveButtons: vi.fn().mockResolvedValue({
+      messageId: 'mock_test_id',
+      status: 'simulated',
+      recipient: '917490095115',
+      timestamp: new Date().toISOString(),
+    }),
     verifyWebhook: () => true,
   };
 
@@ -51,9 +57,30 @@ describe('AI Support and Delivery Status Guardrails', () => {
     expect(result.responseText).toContain('human support team');
   });
 
-  it('should generate accurate AI answer for product inquiries using Gemini', async () => {
+  it('should mute AI bot for escalated customer on subsequent inquiries', async () => {
     const result = await orchestrator.processMessage({
       from: '917490095115',
+      messageId: 'test_msg_after_escalate',
+      body: 'When will someone reply to me?',
+    });
+
+    expect(result.action).toBe('escalated_muted');
+  });
+
+  it('should allow customer to resume automated bot with start keyword', async () => {
+    const result = await orchestrator.processMessage({
+      from: '917490095115',
+      messageId: 'test_msg_resume',
+      body: 'start',
+    });
+
+    expect(result.action).toBe('answered');
+    expect(result.responseText).toContain('automated assistant is back online');
+  });
+
+  it('should generate accurate AI answer for product inquiries using Gemini', async () => {
+    const result = await orchestrator.processMessage({
+      from: '919876543210',
       messageId: 'test_msg_faq',
       body: 'Is your Paan Mukhwas completely supari free and does it need refrigeration?',
     });
@@ -61,5 +88,5 @@ describe('AI Support and Delivery Status Guardrails', () => {
     expect(result.action).toBe('answered');
     expect(result.responseText).toBeDefined();
     expect(result.responseText?.length).toBeGreaterThan(10);
-  }, 15000);
+  }, 30000);
 });

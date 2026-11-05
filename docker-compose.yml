@@ -6,6 +6,6 @@ services:
     container_name: whatsapp-platform-api
     restart: unless-stopped
     ports:
-      - "3001:3000"
+      - '3001:3000'
     env_file:
-      - .env
+      - ${ENV_FILE:-.env}

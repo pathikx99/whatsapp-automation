@@ -10,6 +10,11 @@ try {
 
 export type WhatsAppMessageType = 'text' | 'template' | 'interactive' | 'media';
 
+export interface WhatsAppButtonAction {
+  id: string;
+  title: string;
+}
+
 export interface WhatsAppTextMessage {
   type: 'text';
   to: string;
@@ -24,7 +29,17 @@ export interface WhatsAppTemplateMessage {
   parameters?: Array<{ type: string; text?: string }>;
 }
 
-export type OutboundWhatsAppMessage = WhatsAppTextMessage | WhatsAppTemplateMessage;
+export interface WhatsAppInteractiveMessage {
+  type: 'interactive';
+  to: string;
+  body: string;
+  buttons: WhatsAppButtonAction[];
+  header?: string;
+  footer?: string;
+}
+
+export type OutboundWhatsAppMessage =
+  WhatsAppTextMessage | WhatsAppTemplateMessage | WhatsAppInteractiveMessage;
 
 export interface WhatsAppSendResult {
   messageId: string;
@@ -36,6 +51,12 @@ export interface WhatsAppSendResult {
 export interface WhatsAppProvider {
   isConfigured(): boolean;
   sendMessage(message: OutboundWhatsAppMessage): Promise<WhatsAppSendResult>;
+  sendInteractiveButtons(
+    to: string,
+    body: string,
+    buttons: WhatsAppButtonAction[],
+    footer?: string,
+  ): Promise<WhatsAppSendResult>;
   verifyWebhook(mode: string, token: string): boolean;
 }
 
@@ -64,7 +85,10 @@ export function createWhatsAppProvider(): WhatsAppProvider {
         };
       }
 
-      logger.info({ recipient: message.to, type: message.type }, 'Sending WhatsApp message via Cloud API');
+      logger.info(
+        { recipient: message.to, type: message.type },
+        'Sending WhatsApp message via Cloud API',
+      );
 
       try {
         const cleanTo = message.to.replace(/\D/g, '');
@@ -80,19 +104,37 @@ export function createWhatsAppProvider(): WhatsAppProvider {
             preview_url: false,
             body: message.body,
           };
+        } else if (message.type === 'interactive') {
+          payload.type = 'interactive';
+          payload.interactive = {
+            type: 'button',
+            body: { text: message.body },
+            action: {
+              buttons: message.buttons.slice(0, 3).map((btn) => ({
+                type: 'reply',
+                reply: {
+                  id: btn.id,
+                  title: btn.title.slice(0, 20),
+                },
+              })),
+            },
+            header: message.header ? { type: 'text', text: message.header } : undefined,
+            footer: message.footer ? { text: message.footer } : undefined,
+          };
         } else if (message.type === 'template') {
           payload.type = 'template';
           payload.template = {
             name: message.templateName,
             language: { code: message.languageCode || 'en' },
-            components: message.parameters && message.parameters.length > 0
-              ? [
-                  {
-                    type: 'body',
-                    parameters: message.parameters,
-                  },
-                ]
-              : undefined,
+            components:
+              message.parameters && message.parameters.length > 0
+                ? [
+                    {
+                      type: 'body',
+                      parameters: message.parameters,
+                    },
+                  ]
+                : undefined,
           };
         }
 
@@ -108,7 +150,10 @@ export function createWhatsAppProvider(): WhatsAppProvider {
 
         if (!response.ok) {
           const errBody = await response.text();
-          logger.error({ status: response.status, body: errBody, recipient: cleanTo }, 'WhatsApp API dispatch failed');
+          logger.error(
+            { status: response.status, body: errBody, recipient: cleanTo },
+            'WhatsApp API dispatch failed',
+          );
           throw new Error(`WhatsApp API error (${response.status}): ${errBody}`);
         }
 
@@ -126,6 +171,21 @@ export function createWhatsAppProvider(): WhatsAppProvider {
         logger.error({ err, recipient: message.to }, 'Failed to dispatch WhatsApp message');
         throw err;
       }
+    },
+
+    async sendInteractiveButtons(
+      to: string,
+      body: string,
+      buttons: WhatsAppButtonAction[],
+      footer?: string,
+    ): Promise<WhatsAppSendResult> {
+      return this.sendMessage({
+        type: 'interactive',
+        to,
+        body,
+        buttons,
+        footer,
+      });
     },
 
     verifyWebhook(mode: string, token: string): boolean {

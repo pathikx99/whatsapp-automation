@@ -45,4 +45,3 @@ export * from './orchestrator.js';
 if (process.argv[1]?.includes('support-engine')) {
   void start();
 }
-

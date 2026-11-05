@@ -1,7 +1,12 @@
 import { createLogger } from '@whatsapp-platform/shared';
-import { createEcommerceAdapter, EcommerceAdapter, MarketingSegmentCandidate } from '@whatsapp-platform/ecommerce-adapter';
+import {
+  createEcommerceAdapter,
+  EcommerceAdapter,
+  MarketingSegmentCandidate,
+} from '@whatsapp-platform/ecommerce-adapter';
 import { createAiProvider, AiProvider } from '@whatsapp-platform/ai';
 import { createWhatsAppProvider, WhatsAppProvider } from '@whatsapp-platform/whatsapp';
+import { getPlatformRepository, PlatformRepository } from '@whatsapp-platform/database';
 
 const logger = createLogger({ name: 'marketing-orchestrator' });
 
@@ -21,21 +26,21 @@ export interface MarketingOrchestratorOptions {
   ecommerceAdapter?: EcommerceAdapter;
   aiProvider?: AiProvider;
   whatsappProvider?: WhatsAppProvider;
+  platformRepository?: PlatformRepository;
 }
 
 export class MarketingOrchestrator {
   private ecommerceAdapter: EcommerceAdapter;
   private aiProvider: AiProvider;
   private whatsappProvider: WhatsAppProvider;
+  private platformRepo: PlatformRepository;
 
   constructor(options: MarketingOrchestratorOptions = {}) {
     this.ecommerceAdapter = options.ecommerceAdapter || createEcommerceAdapter();
     this.aiProvider = options.aiProvider || createAiProvider();
     this.whatsappProvider = options.whatsappProvider || createWhatsAppProvider();
+    this.platformRepo = options.platformRepository || getPlatformRepository();
   }
-
-  // In-memory dispatch history to prevent fatigue (max 1 message per 14 days per phone)
-  private dispatchedHistory: Map<string, number> = new Map();
 
   /**
    * Evaluates audience segments and generates tailored WhatsApp content via Gemini AI
@@ -63,10 +68,13 @@ export class MarketingOrchestrator {
         continue;
       }
 
-      // Check message fatigue
-      const lastSentTime = this.dispatchedHistory.get(phone);
+      // Check persistent message fatigue from database
+      const lastSentTime = await this.platformRepo.getLastMarketingDispatchTime(phone);
       if (lastSentTime && now - lastSentTime < fourteenDaysMs) {
-        logger.debug({ phone }, 'Skipping candidate due to recent marketing contact');
+        logger.debug(
+          { phone },
+          'Skipping candidate due to recent marketing contact (fatigue guardrail)',
+        );
         report.skippedCount++;
         report.details.push({
           phoneNumber: phone,
@@ -86,7 +94,14 @@ export class MarketingOrchestrator {
           body: tailoredMessage,
         });
 
-        this.dispatchedHistory.set(phone, now);
+        // Persist dispatch in database
+        await this.platformRepo.logMarketingDispatch(
+          phone,
+          candidate.segmentType,
+          tailoredMessage,
+          'sent',
+        );
+
         report.dispatchedCount++;
         report.details.push({
           phoneNumber: phone,
@@ -101,6 +116,12 @@ export class MarketingOrchestrator {
         );
       } catch (err) {
         logger.error({ err, phone }, 'Failed generating or sending marketing message');
+        await this.platformRepo.logMarketingDispatch(
+          phone,
+          candidate.segmentType,
+          err instanceof Error ? err.message : 'Failed',
+          'failed',
+        );
         report.details.push({
           phoneNumber: phone,
           segment: candidate.segmentType,

@@ -3,27 +3,68 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import fs from 'node:fs';
 
-// Search upwards for .env (handles monorepo workspaces where cwd may be apps/* or packages/*)
-function findEnvPath(): string | undefined {
+// Search upwards for project root directory
+export function findRootDir(): string {
   let currentDir = process.cwd();
   for (let i = 0; i < 5; i++) {
-    const candidate = path.join(currentDir, '.env');
-    if (fs.existsSync(candidate)) {
-      return candidate;
+    if (
+      fs.existsSync(path.join(currentDir, 'pnpm-workspace.yaml')) ||
+      fs.existsSync(path.join(currentDir, '.git')) ||
+      fs.existsSync(path.join(currentDir, '.env.dev')) ||
+      fs.existsSync(path.join(currentDir, '.env.prod')) ||
+      fs.existsSync(path.join(currentDir, '.env'))
+    ) {
+      return currentDir;
     }
     const parent = path.dirname(currentDir);
     if (parent === currentDir) break;
     currentDir = parent;
   }
-  return undefined;
+  return process.cwd();
 }
 
-const rootEnvPath = findEnvPath();
-if (rootEnvPath) {
-  dotenv.config({ path: rootEnvPath });
-} else {
-  dotenv.config(); // fallback to default dotenv resolution
+/**
+ * Loads environment variables with automatic environment resolution:
+ * 1. Explicit file via ENV_FILE (e.g. ENV_FILE=.env.prod)
+ * 2. Targeted environment (.env.prod for production, .env.dev for development)
+ * 3. Default active .env file
+ * 4. Local machine overrides (.env.local)
+ */
+export function loadEnvironment(): void {
+  const rootDir = findRootDir();
+
+  // 1. Explicit override via ENV_FILE
+  if (process.env.ENV_FILE) {
+    const customPath = path.resolve(rootDir, process.env.ENV_FILE);
+    if (fs.existsSync(customPath)) {
+      dotenv.config({ path: customPath, override: true });
+      return;
+    }
+  }
+
+  // 2. Active / base .env file
+  const baseEnvPath = path.join(rootDir, '.env');
+  if (fs.existsSync(baseEnvPath)) {
+    dotenv.config({ path: baseEnvPath });
+  }
+
+  // 3. Preferred environment file based on APP_ENV or NODE_ENV
+  const isProd = process.env.NODE_ENV === 'production' || process.env.APP_ENV === 'production';
+  const targetEnvFile = isProd ? '.env.prod' : '.env.dev';
+  const targetEnvPath = path.join(rootDir, targetEnvFile);
+
+  if (fs.existsSync(targetEnvPath)) {
+    dotenv.config({ path: targetEnvPath, override: true });
+  }
+
+  // 4. Local developer overrides
+  const localEnvPath = path.join(rootDir, '.env.local');
+  if (fs.existsSync(localEnvPath)) {
+    dotenv.config({ path: localEnvPath, override: true });
+  }
 }
+
+loadEnvironment();
 
 const SECRET_KEY_PATTERNS = [/key/i, /secret/i, /password/i, /token/i, /url/i, /credential/i];
 
@@ -40,7 +81,7 @@ export function maskSecret(val?: string | null): string {
 export const envSchema = z.object({
   // Application environment
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  APP_ENV: z.enum(['local', 'staging', 'production']).default('local'),
+  APP_ENV: z.enum(['local', 'development', 'staging', 'production']).default('local'),
 
   // API Server
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -62,21 +103,17 @@ export const envSchema = z.object({
     .optional()
     .transform((val) => val === 'true' || val === '1'),
 
-  // Local Supabase (Required for platform state and migrations)
-  LOCAL_SUPABASE_URL: z.string().url('LOCAL_SUPABASE_URL must be a valid URL'),
-  LOCAL_SUPABASE_ANON_KEY: z.string().min(1, 'LOCAL_SUPABASE_ANON_KEY is required'),
+  // Platform Supabase Database (Single Source of Truth)
+  SUPABASE_URL: z.string().url('SUPABASE_URL must be a valid URL'),
+  SUPABASE_SECRET_KEY: z.string().min(1, 'SUPABASE_SECRET_KEY is required'),
+  SUPABASE_PUBLISHABLE_KEY: z.string().optional(),
+  SUPABASE_JWKS_URL: z.string().url().optional(),
+
+  // Optional backwards-compatibility aliases
+  LOCAL_SUPABASE_URL: z.string().url().optional(),
+  LOCAL_SUPABASE_ANON_KEY: z.string().optional(),
   LOCAL_SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
-  LOCAL_DATABASE_URL: z
-    .string()
-    .min(1, 'LOCAL_DATABASE_URL is required')
-    .refine((url) => {
-      try {
-        const parsed = new URL(url);
-        return parsed.protocol === 'postgresql:' || parsed.protocol === 'postgres:';
-      } catch {
-        return false;
-      }
-    }, 'LOCAL_DATABASE_URL must be a valid PostgreSQL connection URI'),
+  LOCAL_DATABASE_URL: z.string().optional(),
 
   // Existing Ecommerce Supabase (Read-Only access, separate environment)
   ECOMMERCE_SUPABASE_URL: z.string().url('ECOMMERCE_SUPABASE_URL must be a valid URL'),
@@ -95,16 +132,21 @@ export const envSchema = z.object({
       }
     }, 'ECOMMERCE_DATABASE_URL_RO must be a valid PostgreSQL connection URI if provided'),
 
-  // Future AI Provider Configuration (Optional at this stage)
+  // AI Provider Configuration
   AI_PROVIDER: z.enum(['openai', 'anthropic', 'gemini', 'mock']).default('mock'),
   AI_API_KEY: z.string().optional(),
   AI_MODEL: z.string().optional(),
 
-  // Future WhatsApp Provider Configuration (Optional at this stage)
+  // WhatsApp Provider Configuration
   WHATSAPP_PROVIDER: z.enum(['cloud_api', 'twilio', 'mock']).default('mock'),
   WHATSAPP_API_KEY: z.string().optional(),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
   WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  WHATSAPP_APP_SECRET: z.string().optional(),
+
+  // Integrations & Alerts
+  ECOMMERCE_WEBHOOK_SECRET: z.string().optional(),
+  ADMIN_ALERT_PHONE_NUMBER: z.string().optional(),
 });
 
 export type RawConfig = z.input<typeof envSchema>;
@@ -122,7 +164,25 @@ export class ConfigurationError extends Error {
 }
 
 export function validateConfig(raw: Record<string, unknown> = process.env): AppConfig {
-  const result = envSchema.safeParse(raw);
+  const normalized = { ...raw };
+  if (!normalized.API_PORT && normalized.PORT) {
+    normalized.API_PORT = normalized.PORT;
+  }
+  if (!normalized.SUPABASE_URL && normalized.LOCAL_SUPABASE_URL) {
+    normalized.SUPABASE_URL = normalized.LOCAL_SUPABASE_URL;
+  }
+  if (
+    !normalized.SUPABASE_SECRET_KEY &&
+    (normalized.LOCAL_SUPABASE_SERVICE_ROLE_KEY || normalized.LOCAL_SUPABASE_ANON_KEY)
+  ) {
+    normalized.SUPABASE_SECRET_KEY = (normalized.LOCAL_SUPABASE_SERVICE_ROLE_KEY ||
+      normalized.LOCAL_SUPABASE_ANON_KEY) as string;
+  }
+  if (!normalized.SUPABASE_PUBLISHABLE_KEY && normalized.LOCAL_SUPABASE_ANON_KEY) {
+    normalized.SUPABASE_PUBLISHABLE_KEY = normalized.LOCAL_SUPABASE_ANON_KEY as string;
+  }
+
+  const result = envSchema.safeParse(normalized);
 
   if (!result.success) {
     const issues = result.error.issues.map((issue) => {
@@ -153,4 +213,15 @@ export function getConfig(override?: Record<string, unknown>): AppConfig {
 
 export function resetConfigCache(): void {
   cachedConfig = null;
+}
+
+export function getPlatformSupabaseConfig(config: AppConfig = getConfig()): {
+  url: string;
+  publishableKey?: string;
+  secretKey: string;
+} {
+  const url = config.SUPABASE_URL;
+  const secretKey = config.SUPABASE_SECRET_KEY;
+  const publishableKey = config.SUPABASE_PUBLISHABLE_KEY;
+  return { url, publishableKey, secretKey };
 }

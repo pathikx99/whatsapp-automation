@@ -217,6 +217,9 @@ importers:
       '@whatsapp-platform/support-engine':
         specifier: workspace:*
         version: link:../support-engine
+      '@whatsapp-platform/whatsapp':
+        specifier: workspace:*
+        version: link:../../packages/whatsapp
       fastify:
         specifier: ^5.2.1
         version: 5.12.8
@@ -292,9 +295,15 @@ importers:
       '@whatsapp-platform/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@whatsapp-platform/marketing-engine':
+        specifier: workspace:*
+        version: link:../marketing-engine
       '@whatsapp-platform/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@whatsapp-platform/whatsapp':
+        specifier: workspace:*
+        version: link:../../packages/whatsapp
     devDependencies:
       '@types/node':
         specifier: ^22.13.5

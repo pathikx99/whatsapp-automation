@@ -40,4 +40,3 @@ export function registerShutdownHandler(
   process.once('SIGTERM', () => void handleSignal('SIGTERM'));
   process.once('SIGINT', () => void handleSignal('SIGINT'));
 }
-

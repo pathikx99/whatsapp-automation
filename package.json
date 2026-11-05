@@ -8,6 +8,9 @@
   "scripts": {
     "dev": "pnpm --filter @whatsapp-platform/api dev",
     "dev:all": "pnpm --parallel -r dev",
+    "env:dev": "tsx scripts/switch-env.ts dev",
+    "env:prod": "tsx scripts/switch-env.ts prod",
+    "start:prod": "APP_ENV=production pnpm --filter @whatsapp-platform/api start",
     "build": "pnpm -r build",
     "test": "vitest run",
     "test:watch": "vitest",

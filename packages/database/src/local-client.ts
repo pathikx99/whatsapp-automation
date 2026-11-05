@@ -1,12 +1,7 @@
-import pg from 'pg';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { getConfig } from '@whatsapp-platform/config';
-import { assertLocalDatabaseUrl } from './safety.js';
 
-const { Pool } = pg;
-
-let localPool: pg.Pool | null = null;
-let localSupabaseClient: SupabaseClient | null = null;
+let platformSupabaseClient: SupabaseClient | null = null;
 
 export interface DbHealthResult {
   status: 'healthy' | 'unhealthy';
@@ -14,68 +9,78 @@ export interface DbHealthResult {
   database: string;
 }
 
-export function getLocalDbPool(): pg.Pool {
-  if (!localPool) {
+/**
+ * Initializes and returns the Supabase client for the platform database.
+ * Uses SUPABASE_URL and SUPABASE_SECRET_KEY.
+ */
+export function createPlatformSupabaseClient(): SupabaseClient {
+  if (!platformSupabaseClient) {
     const config = getConfig();
-    // Safety check: local database URL must point to local host
-    assertLocalDatabaseUrl(config.LOCAL_DATABASE_URL, 'local database pool initialization');
+    const url = config.SUPABASE_URL || config.LOCAL_SUPABASE_URL!;
+    const apiKey =
+      config.SUPABASE_SECRET_KEY ||
+      config.LOCAL_SUPABASE_SERVICE_ROLE_KEY ||
+      config.SUPABASE_PUBLISHABLE_KEY ||
+      config.LOCAL_SUPABASE_ANON_KEY!;
 
-    localPool = new Pool({
-      connectionString: config.LOCAL_DATABASE_URL,
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
-    });
-
-    localPool.on('error', (err) => {
-      // Don't crash process on idle client error; log will capture via handler
-      console.error('[DATABASE_LOCAL_POOL_ERROR]', err.message);
-    });
-  }
-
-  return localPool;
-}
-
-export async function closeLocalDbPool(): Promise<void> {
-  if (localPool) {
-    await localPool.end();
-    localPool = null;
-  }
-}
-
-export function createLocalSupabaseClient(): SupabaseClient {
-  if (!localSupabaseClient) {
-    const config = getConfig();
-    localSupabaseClient = createClient(config.LOCAL_SUPABASE_URL, config.LOCAL_SUPABASE_ANON_KEY, {
+    platformSupabaseClient = createClient(url, apiKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
       },
     });
   }
-  return localSupabaseClient;
+  return platformSupabaseClient;
 }
+
+// Backwards-compatibility alias
+export const createLocalSupabaseClient = createPlatformSupabaseClient;
+
+export function resetPlatformSupabaseClient(): void {
+  platformSupabaseClient = null;
+}
+
+export const resetLocalSupabaseClient = resetPlatformSupabaseClient;
 
 /**
- * Checks connectivity to the local database without leaking connection strings or credentials.
+ * Graceful shutdown helper.
+ * No-op: Supabase client uses HTTP stateless connections; no local connection pool to close.
  */
-export async function checkLocalDbHealth(pool?: pg.Pool): Promise<DbHealthResult> {
-  const activePool = pool || getLocalDbPool();
-  const startTime = Date.now();
-
-  const client = await activePool.connect();
-  try {
-    const res = await client.query('SELECT current_database() as db_name, 1 as healthy;');
-    const latencyMs = Date.now() - startTime;
-    const dbName = res.rows[0]?.db_name || 'local';
-
-    return {
-      status: 'healthy',
-      latencyMs,
-      database: dbName,
-    };
-  } finally {
-    client.release();
-  }
+export async function closeLocalDbPool(): Promise<void> {
+  // No local DB pool needed when using Supabase
 }
 
+export const closePlatformDb = closeLocalDbPool;
+
+/**
+ * Checks connectivity to the Supabase platform database via its REST endpoint.
+ */
+export async function checkPlatformDbHealth(): Promise<DbHealthResult> {
+  const startTime = Date.now();
+  const config = getConfig();
+  const url = config.SUPABASE_URL || config.LOCAL_SUPABASE_URL!;
+  const apiKey =
+    config.SUPABASE_SECRET_KEY ||
+    config.LOCAL_SUPABASE_SERVICE_ROLE_KEY ||
+    config.SUPABASE_PUBLISHABLE_KEY ||
+    config.LOCAL_SUPABASE_ANON_KEY!;
+
+  const res = await fetch(`${url}/rest/v1/`, {
+    headers: {
+      apikey: apiKey,
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  if (!res.ok && res.status !== 404 && res.status !== 200) {
+    throw new Error(`Platform database check failed with HTTP ${res.status}`);
+  }
+
+  return {
+    status: 'healthy',
+    latencyMs: Date.now() - startTime,
+    database: 'supabase',
+  };
+}
+
+export const checkLocalDbHealth = checkPlatformDbHealth;

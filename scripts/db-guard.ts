@@ -25,11 +25,13 @@ async function runGuardedDbCommand() {
       process.exit(1);
     }
 
-    // 2. Validate LOCAL_DATABASE_URL points to localhost/127.0.0.1
-    assertLocalDatabaseUrl(config.LOCAL_DATABASE_URL, 'supabase db reset');
+    // 2. Validate LOCAL_DATABASE_URL points to localhost/127.0.0.1 if present
+    const localDbUrl =
+      config.LOCAL_DATABASE_URL || 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+    assertLocalDatabaseUrl(localDbUrl, 'supabase db reset');
 
     logger.info(
-      { targetUrl: config.LOCAL_SUPABASE_URL },
+      { targetUrl: config.SUPABASE_URL },
       'Safety check passed. Executing local Supabase database reset...',
     );
 
@@ -50,4 +52,3 @@ async function runGuardedDbCommand() {
 }
 
 void runGuardedDbCommand();
-

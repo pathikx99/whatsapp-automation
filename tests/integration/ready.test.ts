@@ -11,11 +11,9 @@ describe('API Readiness Endpoint', () => {
     process.env.NODE_ENV = 'test';
     process.env.APP_ENV = 'local';
     process.env.API_PORT = '3000';
-    process.env.LOCAL_SUPABASE_URL = 'http://127.0.0.1:54321';
-    process.env.LOCAL_SUPABASE_ANON_KEY = 'test-anon-key';
-    process.env.LOCAL_DATABASE_URL =
-      'postgresql://postgres:secretpassword@127.0.0.1:54322/postgres';
-    process.env.ECOMMERCE_SUPABASE_URL = 'https://ecommerce.supabase.co';
+    process.env.SUPABASE_URL = 'https://platform-test.supabase.co';
+    process.env.SUPABASE_SECRET_KEY = 'test-platform-secret-key';
+    process.env.ECOMMERCE_SUPABASE_URL = 'https://ecommerce-test.supabase.co';
     process.env.ECOMMERCE_SUPABASE_ANON_KEY = 'test-ecommerce-key';
 
     resetConfigCache();
@@ -70,7 +68,7 @@ describe('API Readiness Endpoint', () => {
     const body = JSON.parse(response.body);
     expect(body.status).toBe('degraded');
     expect(body.checks.database).toBe('disconnected');
-    expect(body.error).toBe('Local database connectivity check failed');
+    expect(body.error).toBe('Database connectivity check failed');
 
     // CRITICAL: Ensure no sensitive details (e.g. secretpassword, ports, connection string) are leaked in body
     expect(response.body).not.toContain('secretpassword');

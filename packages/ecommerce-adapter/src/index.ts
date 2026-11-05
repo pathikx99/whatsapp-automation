@@ -94,14 +94,17 @@ export function createEcommerceAdapter(): EcommerceAdapter {
         const client = createEcommerceSupabaseClient();
         const digitsOnly = phoneNumber.replace(/\D/g, '');
         // Common phone representations: with or without country code 91
-        const phone10 = digitsOnly.length > 10 && digitsOnly.startsWith('91') ? digitsOnly.slice(2) : digitsOnly;
+        const phone10 =
+          digitsOnly.length > 10 && digitsOnly.startsWith('91') ? digitsOnly.slice(2) : digitsOnly;
         const phone12 = digitsOnly.length === 10 ? `91${digitsOnly}` : digitsOnly;
 
         logger.debug({ digitsOnly, phone10, phone12 }, 'Querying customer by phone');
 
         const { data, error } = await client
           .from('customers')
-          .select('id, email, first_name, last_name, phone, customer_type, segment, total_spend, total_orders, last_order_date')
+          .select(
+            'id, email, first_name, last_name, phone, customer_type, segment, total_spend, total_orders, last_order_date',
+          )
           .or(`phone.eq.${phone10},phone.eq.${phone12},phone.eq.${digitsOnly}`)
           .limit(1)
           .maybeSingle();
@@ -136,7 +139,9 @@ export function createEcommerceAdapter(): EcommerceAdapter {
         const client = createEcommerceSupabaseClient();
         const { data, error } = await client
           .from('orders')
-          .select('id, order_number, customer_id, status, payment_status, payment_method, total_amount, created_at, order_items(quantity, price_at_purchase, product_variants(sku, flavor, weight_grams, products(name)))')
+          .select(
+            'id, order_number, customer_id, status, payment_status, payment_method, total_amount, created_at, order_items(quantity, price_at_purchase, product_variants(sku, flavor, weight_grams, products(name)))',
+          )
           .eq('customer_id', customerId)
           .order('created_at', { ascending: false });
 
@@ -174,7 +179,9 @@ export function createEcommerceAdapter(): EcommerceAdapter {
         const client = createEcommerceSupabaseClient();
         const { data, error } = await client
           .from('products')
-          .select('id, name, description, category, requires_refrigeration, metadata, product_variants(sku, flavor, weight_grams, price, sale_price, stock_qty)')
+          .select(
+            'id, name, description, category, requires_refrigeration, metadata, product_variants(sku, flavor, weight_grams, price, sale_price, stock_qty)',
+          )
           .eq('is_active', true);
 
         if (error) {
@@ -227,7 +234,9 @@ export function createEcommerceAdapter(): EcommerceAdapter {
         // 1. Fetch recent customers & check their orders
         const { data: customers, error } = await client
           .from('customers')
-          .select('id, email, first_name, last_name, phone, segment, total_orders, total_spend, last_order_date');
+          .select(
+            'id, email, first_name, last_name, phone, segment, total_orders, total_spend, last_order_date',
+          );
 
         if (error || !customers) {
           logger.error({ error }, 'Error fetching customers for marketing segments');
@@ -252,21 +261,36 @@ export function createEcommerceAdapter(): EcommerceAdapter {
           };
 
           const lastOrderTime = c.last_order_date ? new Date(c.last_order_date).getTime() : 0;
-          const daysSinceLastOrder = lastOrderTime > 0 ? Math.floor((now - lastOrderTime) / oneDay) : null;
+          const daysSinceLastOrder =
+            lastOrderTime > 0 ? Math.floor((now - lastOrderTime) / oneDay) : null;
 
-          if (c.total_orders === 1 && daysSinceLastOrder !== null && daysSinceLastOrder >= 5 && daysSinceLastOrder <= 12) {
+          if (
+            c.total_orders === 1 &&
+            daysSinceLastOrder !== null &&
+            daysSinceLastOrder >= 5 &&
+            daysSinceLastOrder <= 12
+          ) {
             candidates.push({
               customer: customerObj,
               segmentType: 'FIRST_ORDER_NURTURE',
               contextData: { lastOrderDate: c.last_order_date },
             });
-          } else if (c.total_orders >= 1 && daysSinceLastOrder !== null && daysSinceLastOrder >= 25 && daysSinceLastOrder <= 40) {
+          } else if (
+            c.total_orders >= 1 &&
+            daysSinceLastOrder !== null &&
+            daysSinceLastOrder >= 25 &&
+            daysSinceLastOrder <= 40
+          ) {
             candidates.push({
               customer: customerObj,
               segmentType: 'REPEAT_REPLENISHMENT',
               contextData: { lastOrderDate: c.last_order_date },
             });
-          } else if (c.total_orders >= 1 && daysSinceLastOrder !== null && daysSinceLastOrder > 60) {
+          } else if (
+            c.total_orders >= 1 &&
+            daysSinceLastOrder !== null &&
+            daysSinceLastOrder > 60
+          ) {
             candidates.push({
               customer: customerObj,
               segmentType: 'WIN_BACK',
@@ -315,4 +339,3 @@ export function createEcommerceAdapter(): EcommerceAdapter {
     },
   };
 }
-

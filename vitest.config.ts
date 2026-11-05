@@ -16,7 +16,10 @@ export default defineConfig({
       '@whatsapp-platform/config': path.resolve(__dirname, './packages/config/src/index.ts'),
       '@whatsapp-platform/shared': path.resolve(__dirname, './packages/shared/src/index.ts'),
       '@whatsapp-platform/database': path.resolve(__dirname, './packages/database/src/index.ts'),
-      '@whatsapp-platform/ecommerce-adapter': path.resolve(__dirname, './packages/ecommerce-adapter/src/index.ts'),
+      '@whatsapp-platform/ecommerce-adapter': path.resolve(
+        __dirname,
+        './packages/ecommerce-adapter/src/index.ts',
+      ),
       '@whatsapp-platform/whatsapp': path.resolve(__dirname, './packages/whatsapp/src/index.ts'),
       '@whatsapp-platform/ai': path.resolve(__dirname, './packages/ai/src/index.ts'),
     },

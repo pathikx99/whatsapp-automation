@@ -3,18 +3,46 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import crypto from 'node:crypto';
 import { getConfig } from '@whatsapp-platform/config';
-import { checkLocalDbHealth, DbHealthResult } from '@whatsapp-platform/database';
+import {
+  checkLocalDbHealth,
+  DbHealthResult,
+  getPlatformRepository,
+} from '@whatsapp-platform/database';
 import { AppError } from '@whatsapp-platform/shared';
 import { SupportOrchestrator } from '@whatsapp-platform/support-engine';
 import { MarketingOrchestrator } from '@whatsapp-platform/marketing-engine';
+import { createWhatsAppProvider } from '@whatsapp-platform/whatsapp';
 
 export interface ServerOptions {
   dbHealthChecker?: () => Promise<DbHealthResult>;
   disableRequestLogging?: boolean;
 }
 
+function verifyMetaSignature(
+  payloadStr: string,
+  signatureHeader?: string,
+  secret?: string,
+): boolean {
+  if (!secret) return true; // Bypass if secret is not configured in environment
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false;
+
+  try {
+    const signature = signatureHeader.slice(7);
+    const expected = crypto.createHmac('sha256', secret).update(payloadStr).digest('hex');
+    const signatureBuf = Buffer.from(signature, 'hex');
+    const expectedBuf = Buffer.from(expected, 'hex');
+
+    if (signatureBuf.length !== expectedBuf.length) return false;
+    return crypto.timingSafeEqual(signatureBuf, expectedBuf);
+  } catch {
+    return false;
+  }
+}
+
 export async function buildServer(options: ServerOptions = {}): Promise<FastifyInstance> {
   const config = getConfig();
+  const platformRepo = getPlatformRepository();
+  const whatsappProvider = createWhatsAppProvider();
 
   const app = fastify({
     genReqId: (req) => {
@@ -32,6 +60,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
             'req.headers.authorization',
             'req.headers.cookie',
             'req.headers["x-api-key"]',
+            'req.headers["x-hub-signature-256"]',
             'password',
             'token',
             'secret',
@@ -51,7 +80,6 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   // CORS restricted to configured origins
   await app.register(cors, {
     origin: (origin, cb) => {
-      // Allow requests with no origin (like mobile apps, curl, or same-origin)
       if (!origin) {
         cb(null, true);
         return;
@@ -84,7 +112,6 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
         'Request failed with error',
       );
 
-      // In production, do not leak unexpected 500 error messages
       const message =
         statusCode >= 500 && config.NODE_ENV === 'production' && !isAppError
           ? 'Internal Server Error'
@@ -109,7 +136,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     });
   });
 
-  // Liveness Check: Reports process is running
+  // Liveness Check
   app.get('/health', async (_req, reply) => {
     return reply.status(200).send({
       status: 'ok',
@@ -119,13 +146,11 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     });
   });
 
-  // Readiness Check: Validates required configuration and local database connectivity
+  // Readiness Check
   app.get('/ready', async (req, reply) => {
     const healthChecker = options.dbHealthChecker || checkLocalDbHealth;
 
     try {
-      // 1. Configuration check (guaranteed non-null if we got here)
-      // 2. Local Database check
       const dbResult = await healthChecker();
 
       return reply.status(200).send({
@@ -147,7 +172,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
           configuration: 'ok',
           database: 'disconnected',
         },
-        error: 'Local database connectivity check failed',
+        error: 'Database connectivity check failed',
       });
     }
   });
@@ -155,7 +180,9 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   const supportOrchestrator = new SupportOrchestrator();
   const marketingOrchestrator = new MarketingOrchestrator();
 
-  // WhatsApp Webhook Verification (Meta Handshake)
+  // ---------------------------------------------------------------------------
+  // 1. WhatsApp Webhook Verification (Meta Handshake)
+  // ---------------------------------------------------------------------------
   app.get('/webhooks/whatsapp', async (req, reply) => {
     const query = req.query as Record<string, string | undefined>;
     const mode = query['hub.mode'];
@@ -167,15 +194,32 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       return reply.status(200).send(challenge);
     }
 
-    req.log.warn({ mode, tokenReceived: Boolean(token) }, 'Meta WhatsApp webhook verification rejected');
+    req.log.warn(
+      { mode, tokenReceived: Boolean(token) },
+      'Meta WhatsApp webhook verification rejected',
+    );
     return reply.status(403).send('Forbidden: Token mismatch');
   });
 
-  // WhatsApp Inbound Webhook (Customer messages and status updates)
+  // ---------------------------------------------------------------------------
+  // 2. WhatsApp Inbound Webhook (Messages, Interactive Buttons, & Status Receipts)
+  // ---------------------------------------------------------------------------
   app.post('/webhooks/whatsapp', async (req, reply) => {
+    const signature = req.headers['x-hub-signature-256'] as string | undefined;
+
+    // Cryptographic HMAC-SHA256 verification when WHATSAPP_APP_SECRET is set
+    if (config.WHATSAPP_APP_SECRET) {
+      const payloadStr = JSON.stringify(req.body);
+      const isValid = verifyMetaSignature(payloadStr, signature, config.WHATSAPP_APP_SECRET);
+      if (!isValid) {
+        req.log.warn('Rejected WhatsApp webhook due to invalid HMAC signature');
+        return reply.status(401).send({ error: 'Unauthorized: Invalid signature' });
+      }
+    }
+
     const body = req.body as any;
 
-    // Immediately acknowledge Meta to prevent timeout/retries
+    // Immediately acknowledge Meta
     reply.status(200).send({ status: 'received' });
 
     try {
@@ -184,22 +228,55 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
           const changes = entry.changes || [];
           for (const change of changes) {
             const value = change.value;
+
+            // Handle Message Delivery Status Receipts (sent, delivered, read, failed)
+            if (value?.messaging_product === 'whatsapp' && Array.isArray(value?.statuses)) {
+              for (const status of value.statuses) {
+                if (status.id && status.status) {
+                  void platformRepo
+                    .logMessagingReceipt(status.id, status.recipient_id || '', status.status)
+                    .catch((err) => req.log.error({ err }, 'Error logging message receipt'));
+                }
+              }
+            }
+
+            // Handle Inbound Customer Messages & Interactive Button Responses
             if (value?.messaging_product === 'whatsapp' && Array.isArray(value?.messages)) {
               for (const message of value.messages) {
-                if (message.type === 'text' && message.text?.body) {
-                  const contact = value.contacts?.[0];
-                  const senderName = contact?.profile?.name;
+                const contact = value.contacts?.[0];
+                const senderName = contact?.profile?.name;
 
-                  // Process asynchronously through Support Engine
-                  void supportOrchestrator.processMessage({
-                    from: message.from,
-                    messageId: message.id,
-                    body: message.text.body,
-                    senderName,
-                    timestamp: message.timestamp,
-                  }).catch((err) => {
-                    req.log.error({ err, messageId: message.id }, 'Error in support orchestrator processMessage');
-                  });
+                let messageBody = '';
+                let buttonId: string | undefined;
+
+                if (message.type === 'text' && message.text?.body) {
+                  messageBody = message.text.body;
+                } else if (message.type === 'interactive') {
+                  if (message.interactive?.type === 'button_reply') {
+                    buttonId = message.interactive.button_reply.id;
+                    messageBody = message.interactive.button_reply.title || '';
+                  } else if (message.interactive?.type === 'list_reply') {
+                    buttonId = message.interactive.list_reply.id;
+                    messageBody = message.interactive.list_reply.title || '';
+                  }
+                }
+
+                if (messageBody || buttonId) {
+                  void supportOrchestrator
+                    .processMessage({
+                      from: message.from,
+                      messageId: message.id,
+                      body: messageBody,
+                      senderName,
+                      timestamp: message.timestamp,
+                      interactiveButtonId: buttonId,
+                    })
+                    .catch((err: unknown) => {
+                      req.log.error(
+                        { err, messageId: message.id },
+                        'Error in support orchestrator processMessage',
+                      );
+                    });
                 }
               }
             }
@@ -211,7 +288,116 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     }
   });
 
-  // Manual or Scheduled Marketing Campaign Trigger
+  // ---------------------------------------------------------------------------
+  // 3. Ecommerce Webhook Ingestion (Orders & Cart Recovery)
+  // ---------------------------------------------------------------------------
+  app.post('/webhooks/ecommerce', async (req, reply) => {
+    // Secret authentication check
+    const authHeader = req.headers.authorization;
+    const customHeader = req.headers['x-webhook-secret'];
+    const expectedSecret = config.ECOMMERCE_WEBHOOK_SECRET;
+
+    if (expectedSecret) {
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : customHeader;
+      if (token !== expectedSecret) {
+        return reply.status(401).send({ error: 'Unauthorized: Invalid ecommerce webhook secret' });
+      }
+    }
+
+    const payload = req.body as {
+      event: 'order.created' | 'order.paid' | 'order.dispatched' | 'cart.abandoned';
+      customerPhone: string;
+      customerName?: string;
+      orderNumber?: string;
+      items?: Array<{ name: string; quantity: number }>;
+      totalAmount?: number;
+      cartItemName?: string;
+    };
+
+    if (!payload?.event || !payload?.customerPhone) {
+      return reply.status(400).send({ error: 'Bad Request: Missing event or customerPhone' });
+    }
+
+    const phone = payload.customerPhone;
+    const name = payload.customerName || 'Friend';
+
+    try {
+      switch (payload.event) {
+        case 'order.created':
+        case 'order.paid': {
+          const itemsSummary =
+            (payload.items || []).map((i) => `• ${i.name} (${i.quantity}x)`).join('\n') ||
+            'Mukhwas treats';
+          const msg =
+            `Hi ${name}! 🎉\n\n` +
+            `Thank you for your order *#${payload.orderNumber || ''}* at Mintara Bites! We're handcrafting your 100% supari-free treats with love in Surat, Gujarat.\n\n` +
+            `*Ordered Items:*\n${itemsSummary}\n\n` +
+            `*Total:* ₹${payload.totalAmount || ''}\n\n` +
+            `Track your order status anytime here: https://mintarabites.com/account/orders`;
+
+          await whatsappProvider.sendMessage({
+            type: 'interactive',
+            to: phone,
+            body: msg,
+            buttons: [
+              { id: 'btn_track_order', title: '📦 Track on Web' },
+              { id: 'btn_talk_human', title: '🙋 Talk to Agent' },
+            ],
+          });
+          break;
+        }
+
+        case 'order.dispatched': {
+          const msg =
+            `Hi ${name}! 🚚\n\n` +
+            `Exciting news! Your Mintara Bites order *#${payload.orderNumber || ''}* has been freshly packed and handed to our courier partner!\n\n` +
+            `Track live courier updates directly on your dashboard:\n` +
+            `👉 https://mintarabites.com/account/orders`;
+
+          await whatsappProvider.sendMessage({
+            type: 'interactive',
+            to: phone,
+            body: msg,
+            buttons: [
+              { id: 'btn_track_order', title: '📦 Track on Web' },
+              { id: 'btn_talk_human', title: '🙋 Talk to Agent' },
+            ],
+          });
+          break;
+        }
+
+        case 'cart.abandoned': {
+          const msg =
+            `Hi ${name}! 🌿\n\n` +
+            `We noticed you left *${payload.cartItemName || 'your favorite artisanal treats'}* in your cart.\n\n` +
+            `Your cart is reserved! Finish your checkout now for pure, 100% supari-free freshness:\n` +
+            `👉 https://mintarabites.com/cart`;
+
+          await whatsappProvider.sendMessage({
+            type: 'interactive',
+            to: phone,
+            body: msg,
+            buttons: [
+              { id: 'btn_browse_catalog', title: '🛒 Browse Treats' },
+              { id: 'btn_talk_human', title: '🙋 Talk to Agent' },
+            ],
+          });
+          break;
+        }
+      }
+
+      return reply
+        .status(200)
+        .send({ status: 'dispatched', event: payload.event, recipient: phone });
+    } catch (err) {
+      req.log.error({ err, payload }, 'Failed processing ecommerce webhook event');
+      return reply.status(500).send({ error: 'Internal Error processing ecommerce webhook' });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // 4. Marketing Campaign Trigger
+  // ---------------------------------------------------------------------------
   app.post('/api/marketing/trigger', async (req, reply) => {
     try {
       req.log.info('Marketing campaign triggered via API');
@@ -227,6 +413,52 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
         message: err instanceof Error ? err.message : 'Unknown error during marketing execution',
       });
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // 5. Admin & Analytics Endpoints
+  // ---------------------------------------------------------------------------
+  app.get('/api/analytics/overview', async (_req, reply) => {
+    const summary = await platformRepo.getAnalyticsSummary();
+    return reply.status(200).send({ status: 'ok', summary });
+  });
+
+  app.get('/api/support/tickets', async (req, reply) => {
+    const query = req.query as { status?: 'open' | 'in_progress' | 'resolved' };
+    const tickets = await platformRepo.getEscalationTickets(query.status);
+    return reply.status(200).send({ status: 'ok', count: tickets.length, tickets });
+  });
+
+  app.post('/api/support/tickets/:id/resolve', async (req, reply) => {
+    const params = req.params as { id: string };
+    const resolved = await platformRepo.resolveTicket(params.id);
+
+    if (!resolved) {
+      return reply.status(404).send({ error: 'Ticket not found' });
+    }
+
+    // Notify customer that human support has concluded and AI bot is active again
+    void whatsappProvider
+      .sendMessage({
+        type: 'interactive',
+        to: resolved.phoneNumber,
+        body:
+          `Hello ${resolved.customerName || 'there'}! 🙏\n\n` +
+          `Your support inquiry has been resolved by our team. Our automated AI assistant is back online if you need anything else! ✨`,
+        buttons: [
+          { id: 'btn_browse_catalog', title: '🛒 Browse Treats' },
+          { id: 'btn_track_order', title: '📦 Track on Web' },
+        ],
+      })
+      .catch((err: unknown) => {
+        req.log.error({ err }, 'Failed sending resolution message to customer');
+      });
+
+    return reply.status(200).send({
+      status: 'resolved',
+      ticket: resolved,
+      message: 'Ticket resolved and AI bot unmuted for customer',
+    });
   });
 
   return app;

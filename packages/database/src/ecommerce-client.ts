@@ -17,24 +17,24 @@ export function createEcommerceSupabaseClient(): SupabaseClient {
   if (!ecommerceSupabaseClient) {
     const config = getConfig();
     const apiKey = config.ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY || config.ECOMMERCE_SUPABASE_ANON_KEY;
-    ecommerceSupabaseClient = createClient(
-      config.ECOMMERCE_SUPABASE_URL,
-      apiKey,
-      {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-        global: {
-          headers: {
-            apikey: apiKey,
-            Authorization: `Bearer ${apiKey}`,
-          },
+    ecommerceSupabaseClient = createClient(config.ECOMMERCE_SUPABASE_URL, apiKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+      global: {
+        headers: {
+          apikey: apiKey,
+          Authorization: `Bearer ${apiKey}`,
         },
       },
-    );
+    });
   }
   return ecommerceSupabaseClient;
+}
+
+export function resetEcommerceSupabaseClient(): void {
+  ecommerceSupabaseClient = null;
 }
 
 /**
@@ -86,4 +86,3 @@ export async function closeEcommerceDbPool(): Promise<void> {
     ecommerceRoPool = null;
   }
 }
-

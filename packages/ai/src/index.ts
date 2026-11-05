@@ -63,9 +63,10 @@ export function createAiProvider(): AiProvider {
         const systemMessages = request.messages.filter((m) => m.role === 'system');
         const chatMessages = request.messages.filter((m) => m.role !== 'system');
 
-        const systemInstruction = systemMessages.length > 0
-          ? { parts: systemMessages.map((m) => ({ text: m.content })) }
-          : undefined;
+        const systemInstruction =
+          systemMessages.length > 0
+            ? { parts: systemMessages.map((m) => ({ text: m.content })) }
+            : undefined;
 
         const contents = chatMessages.map((m) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
@@ -81,11 +82,25 @@ export function createAiProvider(): AiProvider {
         }
 
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.AI_API_KEY}`;
-        const response = await fetch(endpoint, {
+        let response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+
+        // If temporary 503/429 overload, retry once after 1.5 seconds
+        if (response.status === 503 || response.status === 429) {
+          logger.warn(
+            { status: response.status, model },
+            'Gemini model busy, retrying after short backoff...',
+          );
+          await new Promise((r) => setTimeout(r, 1500));
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        }
 
         if (!response.ok) {
           const errText = await response.text();
@@ -95,7 +110,11 @@ export function createAiProvider(): AiProvider {
 
         const data = (await response.json()) as {
           candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-          usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+          usageMetadata?: {
+            promptTokenCount?: number;
+            candidatesTokenCount?: number;
+            totalTokenCount?: number;
+          };
         };
 
         const replyContent = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
