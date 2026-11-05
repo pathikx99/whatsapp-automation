@@ -19,7 +19,7 @@ export interface ServerOptions {
 }
 
 function verifyMetaSignature(
-  payloadStr: string,
+  payload: Buffer | string,
   signatureHeader?: string,
   secret?: string,
 ): boolean {
@@ -28,7 +28,7 @@ function verifyMetaSignature(
 
   try {
     const signature = signatureHeader.slice(7);
-    const expected = crypto.createHmac('sha256', secret).update(payloadStr).digest('hex');
+    const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
     const signatureBuf = Buffer.from(signature, 'hex');
     const expectedBuf = Buffer.from(expected, 'hex');
 
@@ -66,6 +66,17 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
             'secret',
           ],
         },
+  });
+
+  // Preserve raw request body buffer for cryptographic webhook HMAC verification (Meta WhatsApp & Shopify)
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+    try {
+      (req as any).rawBody = body;
+      const json = body.length > 0 ? JSON.parse(body.toString('utf8')) : {};
+      done(null, json);
+    } catch (err) {
+      done(err as Error, undefined);
+    }
   });
 
   // Security headers
@@ -209,10 +220,19 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
 
     // Cryptographic HMAC-SHA256 verification when WHATSAPP_APP_SECRET is set
     if (config.WHATSAPP_APP_SECRET) {
-      const payloadStr = JSON.stringify(req.body);
-      const isValid = verifyMetaSignature(payloadStr, signature, config.WHATSAPP_APP_SECRET);
+      const rawPayload = (req as any).rawBody || JSON.stringify(req.body);
+      const isValid =
+        verifyMetaSignature(rawPayload, signature, config.WHATSAPP_APP_SECRET) ||
+        verifyMetaSignature(JSON.stringify(req.body), signature, config.WHATSAPP_APP_SECRET);
+
       if (!isValid) {
-        req.log.warn('Rejected WhatsApp webhook due to invalid HMAC signature');
+        req.log.warn(
+          {
+            hasSignature: Boolean(signature),
+            hasRawBody: Boolean((req as any).rawBody),
+          },
+          'Rejected WhatsApp webhook due to invalid HMAC signature',
+        );
         return reply.status(401).send({ error: 'Unauthorized: Invalid signature' });
       }
     }

@@ -269,11 +269,52 @@ export class SupportOrchestrator {
     // -------------------------------------------------------------------------
     // 6. Interactive Catalog Browse Action
     // -------------------------------------------------------------------------
+    const defaultMintaraProducts = [
+      {
+        title: 'Artisanal Paan Mukhwas',
+        category: 'Paan Mukhwas',
+        price: '₹149 (100g) / ₹249 (200g)',
+        description:
+          'Traditional Calcuttia paan leaf infusion with natural gulkand, fennel & roasted seeds. 100% supari-free. Keep refrigerated to maintain crispness and aroma.',
+      },
+      {
+        title: 'Seeds Fusion (Regular & Lime)',
+        category: 'Wholesome Seeds',
+        price: '₹129 (100g) / ₹219 (200g)',
+        description:
+          '6-seed powerhouse blend (white & black sesame, pumpkin, watermelon, sunflower, flax) lightly salted or zesty lime roasted.',
+      },
+      {
+        title: 'Coconut Crunch',
+        category: 'Sweet Digestive',
+        price: '₹139 (100g) / ₹239 (200g)',
+        description:
+          'Toasted coconut flakes, chocolate-coated sesame, and crisp dhanadal.',
+      },
+      {
+        title: 'Mintara Trio Pack',
+        category: 'Combos',
+        price: '₹499 (350g)',
+        description: 'Curated 3-flavour collection in an airtight gift box.',
+      },
+      {
+        title: 'Family Feast Pack',
+        category: 'Combos',
+        price: '₹699 (700g)',
+        description: 'Best-value large family pack with FREE shipping.',
+      },
+    ];
+
     if (buttonId === 'btn_browse_catalog') {
       const activeProducts = await this.ecommerceAdapter.getAllActiveProducts();
-      const productList = activeProducts
-        .map((p) => `• *${p.title}* (${p.category}): ₹${p.variants[0]?.salePrice || 'N/A'}`)
-        .join('\n');
+      const productList =
+        activeProducts.length > 0
+          ? activeProducts
+              .map((p) => `• *${p.title}* (${p.category}): ₹${p.variants[0]?.salePrice || 'N/A'}`)
+              .join('\n')
+          : defaultMintaraProducts
+              .map((p) => `• *${p.title}* (${p.category}): ${p.price}`)
+              .join('\n');
 
       const catalogMsg =
         `Here are our signature handcrafted artisanal mukhwas: 🌿\n\n` +
@@ -307,17 +348,25 @@ export class SupportOrchestrator {
     // -------------------------------------------------------------------------
     const activeProducts = await this.ecommerceAdapter.getAllActiveProducts();
 
-    const productCatalogContext = activeProducts
-      .map((p) => {
-        const variantsStr = p.variants
-          .map(
-            (v) =>
-              `  - ${v.flavor} (${v.weightGrams}g): ₹${v.salePrice} (MRP: ₹${v.price}, Stock: ${v.stockQty})`,
-          )
-          .join('\n');
-        return `* ${p.title} (${p.category}):\n  Description: ${p.description}\n  Refrigeration required: ${p.requiresRefrigeration ? 'YES (preserve crispness & aroma)' : 'No'}\n  Benefits: ${(p.benefits || []).join(', ')}\n  Ingredients: ${(p.ingredients || []).join(', ')}\n  Variants:\n${variantsStr}`;
-      })
-      .join('\n\n');
+    const productCatalogContext =
+      activeProducts.length > 0
+        ? activeProducts
+            .map((p) => {
+              const variantsStr = p.variants
+                .map(
+                  (v) =>
+                    `  - ${v.flavor} (${v.weightGrams}g): ₹${v.salePrice} (MRP: ₹${v.price}, Stock: ${v.stockQty})`,
+                )
+                .join('\n');
+              return `* ${p.title} (${p.category}):\n  Description: ${p.description}\n  Refrigeration required: ${p.requiresRefrigeration ? 'YES (preserve crispness & aroma)' : 'No'}\n  Benefits: ${(p.benefits || []).join(', ')}\n  Ingredients: ${(p.ingredients || []).join(', ')}\n  Variants:\n${variantsStr}`;
+            })
+            .join('\n\n')
+        : defaultMintaraProducts
+            .map(
+              (p) =>
+                `* ${p.title} (${p.category}):\n  Description: ${p.description}\n  Pricing: ${p.price}`,
+            )
+            .join('\n\n');
 
     let customerContextStr = `Customer Name: ${customerName}\nIdentified in Store DB: ${customer ? 'Yes' : 'Guest/New'}`;
     if (pastOrders.length > 0 && pastOrders[0]) {
