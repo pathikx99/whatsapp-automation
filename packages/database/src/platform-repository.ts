@@ -238,6 +238,32 @@ export class PlatformRepository {
     }
   }
 
+  public async getConversationById(id: string): Promise<PlatformConversation | null> {
+    const { data, error } = await this.client
+      .from('support_conversations')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      logger.error({ error, id }, 'Failed querying support_conversations by id');
+      return null;
+    }
+
+    if (!data) return null;
+
+    return {
+      id: data.id,
+      phoneNumber: data.phone_number,
+      customerName: data.customer_name,
+      status: data.status,
+      metadata: data.metadata,
+      escalatedAt: data.escalated_at,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // 2. MESSAGES (MULTI-TURN CHAT HISTORY)
   // ---------------------------------------------------------------------------
@@ -1248,6 +1274,76 @@ export class PlatformRepository {
   public async getLatestNdrInstruction(customerPhone: string): Promise<NdrInstructionRecord | null> {
     const list = await this.getNdrInstructions(customerPhone);
     return list[0] || null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // WEBHOOK IDEMPOTENCY GUARD
+  // ---------------------------------------------------------------------------
+  private processedEventsCache = new Map<string, number>();
+
+  public async isWebhookProcessed(eventId: string, provider = 'whatsapp'): Promise<boolean> {
+    if (!eventId) return false;
+    const cacheKey = `${provider}:${eventId}`;
+    const now = Date.now();
+    const cachedTime = this.processedEventsCache.get(cacheKey);
+
+    // 15-minute in-memory LRU window
+    if (cachedTime && now - cachedTime < 15 * 60 * 1000) {
+      return true;
+    }
+
+    try {
+      const { data, error } = await this.client
+        .from('processed_webhooks')
+        .select('event_id')
+        .eq('event_id', eventId)
+        .maybeSingle();
+
+      if (!error && data?.event_id) {
+        this.processedEventsCache.set(cacheKey, now);
+        return true;
+      }
+    } catch (err) {
+      logger.debug({ err, eventId }, 'Error checking processed_webhooks table');
+    }
+
+    return false;
+  }
+
+  public async recordProcessedWebhook(
+    eventId: string,
+    provider = 'whatsapp',
+    eventType = 'message',
+  ): Promise<void> {
+    if (!eventId) return;
+    const cacheKey = `${provider}:${eventId}`;
+    this.processedEventsCache.set(cacheKey, Date.now());
+
+    // Clean up cache if too large
+    if (this.processedEventsCache.size > 5000) {
+      const cutoff = Date.now() - 15 * 60 * 1000;
+      for (const [k, timestamp] of this.processedEventsCache.entries()) {
+        if (timestamp < cutoff) {
+          this.processedEventsCache.delete(k);
+        }
+      }
+    }
+
+    try {
+      await this.client
+        .from('processed_webhooks')
+        .upsert(
+          {
+            event_id: eventId,
+            provider,
+            event_type: eventType,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'event_id' },
+        );
+    } catch (err) {
+      logger.debug({ err, eventId }, 'Non-fatal error recording processed webhook in DB');
+    }
   }
 }
 

@@ -122,13 +122,14 @@ export function generatePrefilledCheckoutUrl(
     .join(',');
 
   const queryParams = new URLSearchParams();
+  queryParams.set('add', cartPath);
   queryParams.set('items', JSON.stringify(itemsParam));
   if (promoCode) {
     queryParams.set('discount', promoCode.trim().toUpperCase());
   }
   queryParams.set('source', 'whatsapp_commerce');
 
-  return `${cleanBase}/cart/${cartPath}?${queryParams.toString()}`;
+  return `${cleanBase}/cart?${queryParams.toString()}`;
 }
 
 export function calculateConsumptionVelocity(

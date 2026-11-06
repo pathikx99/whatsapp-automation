@@ -47,6 +47,18 @@ export interface IncomingMessagePayload {
     text?: string;
     items: Array<{ productRetailerId: string; quantity: number; itemPrice?: number }>;
   };
+  media?: {
+    id: string;
+    type: 'audio' | 'voice' | 'image' | 'video' | 'document';
+    mimeType?: string;
+    caption?: string;
+  };
+  location?: {
+    latitude: number;
+    longitude: number;
+    name?: string;
+    address?: string;
+  };
 }
 
 export interface SupportResolutionResult {
@@ -227,8 +239,13 @@ export class SupportOrchestrator {
       'Processing incoming WhatsApp message',
     );
 
-    if (!rawText && !buttonId) {
+    if (!rawText && !buttonId && !payload.media && !payload.location) {
       return { action: 'ignored', customerIdentified: false };
+    }
+
+    // Trigger typing indicator immediately if provider supports it
+    if (typeof this.whatsappProvider?.sendTypingIndicator === 'function') {
+      void this.whatsappProvider.sendTypingIndicator(fromPhone).catch(() => {});
     }
 
     // 1. Identify customer and past orders (Read-Only)
@@ -249,13 +266,59 @@ export class SupportOrchestrator {
     // 2. Load or initialize persistent conversation state
     const conversation = await this.platformRepo.getOrCreateConversation(fromPhone, customerName);
 
+    const userMessageContent =
+      rawText ||
+      (buttonId ? `[Button: ${buttonId}]` : '') ||
+      (payload.media ? `[Media: ${payload.media.type}]` : '') ||
+      (payload.location
+        ? `[Location: ${payload.location.latitude},${payload.location.longitude}]`
+        : '');
+
     // Save incoming user message to history
     await this.platformRepo.appendMessage(
       conversation.id,
       fromPhone,
       'customer',
-      rawText || `[Button: ${buttonId}]`,
+      userMessageContent,
     );
+
+    // Handle incoming Location pin (e.g. for delivery landmarks / NDR resolution)
+    if (payload.location) {
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${payload.location.latitude},${payload.location.longitude}`;
+      await this.platformRepo.recordNdrInstruction({
+        customerPhone: fromPhone,
+        instructions: `Customer shared delivery location pin: ${mapsUrl} (${payload.location.name || payload.location.address || ''})`,
+        status: 'forwarded_to_courier',
+      });
+
+      const locationConfirmMsg =
+        `Thank you ${customerName}! 📍\n\n` +
+        `We have received your exact delivery location pin and forwarded it directly to our courier delivery partner:\n` +
+        `🗺️ ${mapsUrl}\n\n` +
+        `The driver will use this location for priority re-attempt! ✨`;
+
+      await this.whatsappProvider.sendMessage({
+        type: 'interactive',
+        to: fromPhone,
+        body: locationConfirmMsg,
+        buttons: this.defaultButtons,
+      });
+
+      await this.platformRepo.appendMessage(
+        conversation.id,
+        fromPhone,
+        'assistant',
+        locationConfirmMsg,
+      );
+
+      return {
+        action: 'answered',
+        responseText: locationConfirmMsg,
+        customerIdentified: Boolean(customer),
+        customerId: customer?.id,
+        conversationId: conversation.id,
+      };
+    }
 
     // -------------------------------------------------------------------------
     // 3. CHECK RULE: Conversation is currently ESCALATED (AI MUTE POLICY)
@@ -1019,8 +1082,53 @@ export class SupportOrchestrator {
       }
     }
 
-    // Append latest user question
-    multiTurnMessages.push({ role: 'user', content: rawText });
+    // Process media attachment if sent by customer (voice note, audio, image)
+    let mediaParts: Array<{ mimeType: string; data: string }> | undefined = undefined;
+    let userPromptText = rawText;
+
+    if (payload.media) {
+      try {
+        if (typeof this.whatsappProvider?.downloadMedia === 'function') {
+          const downloaded = await this.whatsappProvider.downloadMedia(payload.media.id);
+          const base64Data = downloaded.buffer.toString('base64');
+          mediaParts = [
+            {
+              mimeType: payload.media.mimeType || downloaded.mimeType,
+              data: base64Data,
+            },
+          ];
+        }
+
+        if (payload.media.type === 'audio' || payload.media.type === 'voice') {
+          userPromptText =
+            (rawText ? `${rawText}\n\n` : '') +
+            '[Customer sent a voice note audio message]. Listen to their audio carefully (customer may speak English, Hindi, or Gujarati/Hinglish). Understand their inquiry and answer warmly and concisely in WhatsApp text.';
+        } else if (payload.media.type === 'image') {
+          userPromptText =
+            (rawText ? `${rawText}\n\n` : '') +
+            `[Customer sent an image: ${payload.media.caption || 'Product/order photo'}]. Inspect the image and answer the customer's question helpfully.`;
+        }
+      } catch (err) {
+        logger.warn(
+          { err, mediaId: payload.media.id },
+          'Non-fatal error downloading media for AI processing',
+        );
+        if (!userPromptText) {
+          userPromptText = `[Customer sent a ${payload.media.type} file].`;
+        }
+      }
+    }
+
+    if (!userPromptText) {
+      userPromptText = rawText || 'Hello';
+    }
+
+    // Append latest user turn (with media if present)
+    multiTurnMessages.push({
+      role: 'user',
+      content: userPromptText,
+      media: mediaParts,
+    });
 
     try {
       const aiResponse = await this.aiProvider.generateResponse({

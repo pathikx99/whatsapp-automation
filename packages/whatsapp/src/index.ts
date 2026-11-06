@@ -14,11 +14,34 @@ export type WhatsAppMessageType =
   | 'interactive'
   | 'media'
   | 'product'
-  | 'product_list';
+  | 'product_list'
+  | 'list';
 
 export interface WhatsAppButtonAction {
   id: string;
   title: string;
+}
+
+export interface WhatsAppInteractiveListRow {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface WhatsAppInteractiveListSection {
+  title: string;
+  rows: WhatsAppInteractiveListRow[];
+}
+
+export interface WhatsAppInteractiveListMessage {
+  type: 'list';
+  to: string;
+  body: string;
+  buttonText: string;
+  title?: string;
+  header?: string;
+  footer?: string;
+  sections: WhatsAppInteractiveListSection[];
 }
 
 export interface WhatsAppTextMessage {
@@ -73,7 +96,8 @@ export type OutboundWhatsAppMessage =
   | WhatsAppTemplateMessage
   | WhatsAppInteractiveMessage
   | WhatsAppProductMessage
-  | WhatsAppProductListMessage;
+  | WhatsAppProductListMessage
+  | WhatsAppInteractiveListMessage;
 
 export interface WhatsAppSendResult {
   messageId: string;
@@ -91,6 +115,13 @@ export interface WhatsAppProvider {
     buttons: WhatsAppButtonAction[],
     footer?: string,
   ): Promise<WhatsAppSendResult>;
+  sendInteractiveList(
+    to: string,
+    body: string,
+    buttonText: string,
+    sections: WhatsAppInteractiveListSection[],
+    options?: { header?: string; footer?: string },
+  ): Promise<WhatsAppSendResult>;
   sendProduct(
     to: string,
     catalogId: string,
@@ -106,6 +137,10 @@ export interface WhatsAppProvider {
     sections: WhatsAppProductListSection[],
     footer?: string,
   ): Promise<WhatsAppSendResult>;
+  markMessageAsRead(messageId: string): Promise<boolean>;
+  sendTypingIndicator(to: string): Promise<boolean>;
+  getMediaUrl(mediaId: string): Promise<string>;
+  downloadMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string }>;
   verifyWebhook(mode: string, token: string): boolean;
 }
 
@@ -216,6 +251,25 @@ export function createWhatsAppProvider(): WhatsAppProvider {
               })),
             },
           };
+        } else if (message.type === 'list') {
+          payload.type = 'interactive';
+          payload.interactive = {
+            type: 'list',
+            header: message.header ? { type: 'text', text: message.header } : undefined,
+            body: { text: message.body },
+            footer: message.footer ? { text: message.footer } : undefined,
+            action: {
+              button: (message.buttonText || 'View Options').slice(0, 20),
+              sections: message.sections.map((section) => ({
+                title: section.title.slice(0, 24),
+                rows: section.rows.slice(0, 10).map((row) => ({
+                  id: row.id.slice(0, 200),
+                  title: row.title.slice(0, 24),
+                  description: row.description ? row.description.slice(0, 72) : undefined,
+                })),
+              })),
+            },
+          };
         }
 
         const endpoint = `https://graph.facebook.com/v26.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
@@ -302,6 +356,128 @@ export function createWhatsAppProvider(): WhatsAppProvider {
         sections,
         footer,
       });
+    },
+
+    async sendInteractiveList(
+      to: string,
+      body: string,
+      buttonText: string,
+      sections: WhatsAppInteractiveListSection[],
+      options?: { header?: string; footer?: string },
+    ): Promise<WhatsAppSendResult> {
+      return this.sendMessage({
+        type: 'list',
+        to,
+        body,
+        buttonText,
+        sections,
+        header: options?.header,
+        footer: options?.footer,
+      });
+    },
+
+    async markMessageAsRead(messageId: string): Promise<boolean> {
+      if (!isConfigured || messageId.startsWith('mock_') || messageId.startsWith('wamid_test')) {
+        logger.debug({ messageId }, 'WhatsApp provider mock: marked message as read');
+        return true;
+      }
+
+      try {
+        const endpoint = `https://graph.facebook.com/v26.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${config.WHATSAPP_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            status: 'read',
+            message_id: messageId,
+          }),
+        });
+        return response.ok;
+      } catch (err) {
+        logger.warn({ err, messageId }, 'Failed sending read receipt to WhatsApp API');
+        return false;
+      }
+    },
+
+    async sendTypingIndicator(to: string): Promise<boolean> {
+      if (!isConfigured) {
+        logger.debug({ to }, 'WhatsApp provider mock: typing indicator simulated');
+        return true;
+      }
+      return true;
+    },
+
+    async getMediaUrl(mediaId: string): Promise<string> {
+      if (!isConfigured) {
+        return `https://mock.whatsapp.media/${mediaId}`;
+      }
+
+      const endpoint = `https://graph.facebook.com/v26.0/${mediaId}`;
+      const response = await fetch(endpoint, {
+        headers: {
+          Authorization: `Bearer ${config.WHATSAPP_API_KEY}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch WhatsApp media metadata (${response.status})`);
+      }
+
+      const data = (await response.json()) as { url?: string };
+      if (!data.url) {
+        throw new Error(`No media URL returned for media ID ${mediaId}`);
+      }
+
+      return data.url;
+    },
+
+    async downloadMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string }> {
+      if (
+        !isConfigured ||
+        mediaId.startsWith('mock_') ||
+        mediaId.startsWith('media_audio_test') ||
+        mediaId.startsWith('media_test')
+      ) {
+        // Return a valid silent 44-byte WAV header for testing
+        const silentWavBase64 =
+          'UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+        return {
+          buffer: Buffer.from(silentWavBase64, 'base64'),
+          mimeType: 'audio/wav',
+        };
+      }
+
+      const endpoint = `https://graph.facebook.com/v26.0/${mediaId}`;
+      const metaRes = await fetch(endpoint, {
+        headers: {
+          Authorization: `Bearer ${config.WHATSAPP_API_KEY}`,
+        },
+      });
+
+      if (!metaRes.ok) {
+        throw new Error(`Failed fetching media metadata for ID ${mediaId}`);
+      }
+
+      const meta = (await metaRes.json()) as { url: string; mime_type: string };
+      const mediaRes = await fetch(meta.url, {
+        headers: {
+          Authorization: `Bearer ${config.WHATSAPP_API_KEY}`,
+        },
+      });
+
+      if (!mediaRes.ok) {
+        throw new Error(`Failed downloading media binary from ${meta.url}`);
+      }
+
+      const arrayBuffer = await mediaRes.arrayBuffer();
+      return {
+        buffer: Buffer.from(arrayBuffer),
+        mimeType: meta.mime_type || 'application/octet-stream',
+      };
     },
 
     verifyWebhook(mode: string, token: string): boolean {

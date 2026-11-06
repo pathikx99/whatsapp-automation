@@ -243,9 +243,6 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
 
     const body = req.body as any;
 
-    // Immediately acknowledge Meta
-    reply.status(200).send({ status: 'received' });
-
     try {
       if (body?.object === 'whatsapp_business_account' && Array.isArray(body?.entry)) {
         for (const entry of body.entry) {
@@ -270,6 +267,31 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                 const contact = value.contacts?.[0];
                 const senderName = contact?.profile?.name;
 
+                // 0. Idempotency Guard: prevent duplicate webhook message processing
+                if (message.id) {
+                  const alreadyProcessed = await platformRepo.isWebhookProcessed(
+                    message.id,
+                    'whatsapp',
+                  );
+                  if (alreadyProcessed) {
+                    req.log.info(
+                      { messageId: message.id },
+                      'Inbound webhook message already processed; skipping duplicate delivery',
+                    );
+                    continue;
+                  }
+                  await platformRepo.recordProcessedWebhook(
+                    message.id,
+                    'whatsapp',
+                    message.type || 'message',
+                  );
+                }
+
+                // 0.1 Send immediate read receipt to customer
+                if (message.id && typeof whatsappProvider?.markMessageAsRead === 'function') {
+                  void whatsappProvider.markMessageAsRead(message.id).catch(() => {});
+                }
+
                 let messageBody = '';
                 let buttonId: string | undefined;
 
@@ -290,15 +312,23 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                     rawReferral: message.referral,
                   };
 
-                  void platformRepo
-                    .recordAdReferral({
+                  try {
+                    await platformRepo.recordAdReferral({
                       phoneNumber: message.from,
                       ...referralData,
-                    })
-                    .catch((err) => req.log.error({ err }, 'Error recording CTWA ad referral in integration schema'));
+                    });
+                  } catch (err) {
+                    req.log.error(
+                      { err },
+                      'Error recording CTWA ad referral in integration schema',
+                    );
+                  }
                 }
 
-                // 2. Handle Message Types: text, interactive, and native catalog orders
+                // 2. Handle Message Types: text, interactive, catalog orders, audio/voice, image, location
+                let mediaData: any = undefined;
+                let locationData: any = undefined;
+
                 if (message.type === 'text' && message.text?.body) {
                   messageBody = message.text.body;
                 } else if (message.type === 'interactive') {
@@ -312,6 +342,35 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                 } else if (message.type === 'order' && message.order) {
                   buttonId = 'btn_whatsapp_cart_order';
                   messageBody = message.order.text || '[WhatsApp Catalog Cart Order]';
+                } else if (message.type === 'audio' || message.type === 'voice') {
+                  const audioObj = message.audio || message.voice;
+                  if (audioObj?.id) {
+                    mediaData = {
+                      id: audioObj.id,
+                      type: message.type,
+                      mimeType: audioObj.mime_type || 'audio/ogg',
+                    };
+                  }
+                } else if (message.type === 'image' && message.image?.id) {
+                  mediaData = {
+                    id: message.image.id,
+                    type: 'image',
+                    mimeType: message.image.mime_type || 'image/jpeg',
+                    caption: message.image.caption,
+                  };
+                  if (message.image.caption) {
+                    messageBody = message.image.caption;
+                  }
+                } else if (message.type === 'location' && message.location) {
+                  locationData = {
+                    latitude: message.location.latitude,
+                    longitude: message.location.longitude,
+                    name: message.location.name,
+                    address: message.location.address,
+                  };
+                  messageBody =
+                    message.location.address ||
+                    `[Location: ${message.location.latitude},${message.location.longitude}]`;
                 }
 
                 let catalogOrderData: any = undefined;
@@ -327,7 +386,13 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                   };
                 }
 
-                if (messageBody || buttonId || referralData) {
+                if (
+                  messageBody ||
+                  buttonId ||
+                  referralData ||
+                  mediaData ||
+                  locationData
+                ) {
                   void supportOrchestrator
                     .processMessage({
                       from: message.from,
@@ -338,6 +403,8 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                       interactiveButtonId: buttonId,
                       referral: referralData,
                       catalogOrder: catalogOrderData,
+                      media: mediaData,
+                      location: locationData,
                     })
                     .catch((err: unknown) => {
                       req.log.error(
@@ -354,6 +421,8 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     } catch (err) {
       req.log.error({ err }, 'Error parsing inbound WhatsApp webhook payload');
     }
+
+    return reply.status(200).send({ status: 'received' });
   });
 
   // ---------------------------------------------------------------------------
@@ -907,6 +976,48 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       status: 'resolved',
       ticket: resolved,
       message: 'Ticket resolved and AI bot unmuted for customer',
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 5.1 Human Agent Live-Reply API (Live Agent Chat)
+  // ---------------------------------------------------------------------------
+  app.post('/api/support/conversations/:id/reply', async (req, reply) => {
+    const params = req.params as { id: string };
+    const body = req.body as { message?: string; agentName?: string };
+
+    if (!body?.message || typeof body.message !== 'string' || !body.message.trim()) {
+      return reply.status(400).send({ error: 'Bad Request: "message" text is required' });
+    }
+
+    const conversation = await platformRepo.getConversationById(params.id);
+    if (!conversation) {
+      return reply.status(404).send({ error: 'Conversation not found' });
+    }
+
+    const textToSend = body.message.trim();
+    const agentName = body.agentName || 'Customer Care Team';
+
+    const sendResult = await whatsappProvider.sendMessage({
+      type: 'text',
+      to: conversation.phoneNumber,
+      body: textToSend,
+    });
+
+    const savedMessage = await platformRepo.appendMessage(
+      conversation.id,
+      conversation.phoneNumber,
+      'human_agent',
+      textToSend,
+    );
+
+    return reply.status(200).send({
+      status: 'sent',
+      messageId: sendResult.messageId,
+      recipient: conversation.phoneNumber,
+      conversationId: conversation.id,
+      agentName,
+      message: savedMessage,
     });
   });
 

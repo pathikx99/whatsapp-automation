@@ -3,9 +3,15 @@ import { getConfig } from '@whatsapp-platform/config';
 
 export type AiRole = 'system' | 'user' | 'assistant';
 
+export interface AiMediaPart {
+  mimeType: string;
+  data: string; // base64 encoded
+}
+
 export interface AiChatMessage {
   role: AiRole;
   content: string;
+  media?: AiMediaPart[];
 }
 
 export interface AiCompletionRequest {
@@ -13,6 +19,7 @@ export interface AiCompletionRequest {
   temperature?: number;
   maxTokens?: number;
   model?: string;
+  timeoutMs?: number;
 }
 
 export interface AiCompletionResponse {
@@ -68,10 +75,23 @@ export function createAiProvider(): AiProvider {
             ? { parts: systemMessages.map((m) => ({ text: m.content })) }
             : undefined;
 
-        const contents = chatMessages.map((m) => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }],
-        }));
+        const contents = chatMessages.map((m) => {
+          const parts: Array<Record<string, unknown>> = [{ text: m.content }];
+          if (m.media && m.media.length > 0) {
+            for (const item of m.media) {
+              parts.push({
+                inlineData: {
+                  mimeType: item.mimeType,
+                  data: item.data,
+                },
+              });
+            }
+          }
+          return {
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts,
+          };
+        });
 
         const payload: Record<string, unknown> = { contents };
         if (systemInstruction) {
@@ -81,12 +101,27 @@ export function createAiProvider(): AiProvider {
           payload.generationConfig = { temperature: request.temperature };
         }
 
+        const timeoutMs = request.timeoutMs || 10000;
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.AI_API_KEY}`;
-        let response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        
+        let response: Response;
+        try {
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+        } catch (fetchErr) {
+          logger.warn({ err: fetchErr, model }, 'Initial Gemini request timed out or network error; retrying once...');
+          await new Promise((r) => setTimeout(r, 1000));
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+        }
 
         // If temporary 503/429 overload, retry once after 1.5 seconds
         if (response.status === 503 || response.status === 429) {
@@ -99,6 +134,7 @@ export function createAiProvider(): AiProvider {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(timeoutMs),
           });
         }
 
