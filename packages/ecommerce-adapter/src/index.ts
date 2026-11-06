@@ -57,6 +57,18 @@ export interface EcommerceProduct {
   variants: EcommerceProductVariant[];
 }
 
+export interface WebsiteReview {
+  id: string;
+  productId: string;
+  customerId?: string;
+  customerName: string;
+  rating: number;
+  title?: string;
+  comment: string;
+  isVerified: boolean;
+  createdAt: string;
+}
+
 export interface MarketingSegmentCandidate {
   customer: EcommerceCustomer;
   segmentType: 'FIRST_ORDER_NURTURE' | 'REPEAT_REPLENISHMENT' | 'CART_ABANDONED' | 'WIN_BACK';
@@ -64,6 +76,196 @@ export interface MarketingSegmentCandidate {
     lastProductName?: string;
     lastOrderDate?: string;
     cartItemName?: string;
+    favoriteProduct?: string;
+    reorderCheckoutUrl?: string;
+    targetReminderDay?: number;
+    estimatedRunoutDays?: number;
+  };
+}
+
+export interface ReplenishmentItem {
+  name: string;
+  flavor?: string;
+  weightGrams?: number;
+  quantity: number;
+  unitPrice: number;
+  sku?: string;
+}
+
+export interface ReplenishmentPrediction {
+  totalGrams: number;
+  dailyConsumptionRateGrams: number;
+  estimatedRunoutDays: number;
+  targetReminderDay: number;
+  isDueForReplenishment: boolean;
+  daysSinceLastOrder: number | null;
+  favoriteProduct: string;
+  recommendedItems: ReplenishmentItem[];
+  reorderCheckoutUrl: string;
+}
+
+export function generatePrefilledCheckoutUrl(
+  items: Array<{ name: string; quantity: number; sku?: string; unitPrice?: number; price?: number }>,
+  promoCode?: string,
+  baseUrl = 'https://mintarabites.com',
+): string {
+  const cleanBase = baseUrl.replace(/\/+$/, '');
+  const itemsParam = items.map((i) => ({
+    name: i.name,
+    sku: i.sku || i.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    quantity: i.quantity,
+    price: i.unitPrice ?? i.price ?? 249,
+  }));
+
+  const cartPath = items
+    .map((i) => `${i.sku || i.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}:${i.quantity}`)
+    .join(',');
+
+  const queryParams = new URLSearchParams();
+  queryParams.set('items', JSON.stringify(itemsParam));
+  if (promoCode) {
+    queryParams.set('discount', promoCode.trim().toUpperCase());
+  }
+  queryParams.set('source', 'whatsapp_commerce');
+
+  return `${cleanBase}/cart/${cartPath}?${queryParams.toString()}`;
+}
+
+export function calculateConsumptionVelocity(
+  orders: EcommerceOrder[],
+  options: {
+    dailyRateGrams?: number;
+    websiteUrl?: string;
+    promoCode?: string;
+  } = {},
+): ReplenishmentPrediction {
+  const dailyRate = options.dailyRateGrams || 12; // ~12g daily after-meal consumption for typical household
+  const websiteUrl = options.websiteUrl || 'https://mintarabites.com';
+
+  if (!orders || orders.length === 0) {
+    // Default fallback assumption: standard 300g household pack
+    const defaultItems: ReplenishmentItem[] = [
+      {
+        name: 'Artisanal Paan Mukhwas (300g)',
+        flavor: 'Traditional Calcuttia',
+        weightGrams: 300,
+        quantity: 1,
+        unitPrice: 249,
+        sku: 'paan-mukhwas-300g',
+      },
+    ];
+
+    return {
+      totalGrams: 300,
+      dailyConsumptionRateGrams: dailyRate,
+      estimatedRunoutDays: 25,
+      targetReminderDay: 25,
+      isDueForReplenishment: false,
+      daysSinceLastOrder: null,
+      favoriteProduct: 'Artisanal Paan Mukhwas (300g)',
+      recommendedItems: defaultItems,
+      reorderCheckoutUrl: generatePrefilledCheckoutUrl(defaultItems, options.promoCode, websiteUrl),
+    };
+  }
+
+  // Evaluate recent order and all order history
+  const recentOrder = orders[0];
+  if (!recentOrder) {
+    const defaultItems: ReplenishmentItem[] = [
+      {
+        name: 'Artisanal Paan Mukhwas (300g)',
+        flavor: 'Traditional Calcuttia',
+        weightGrams: 300,
+        quantity: 1,
+        unitPrice: 249,
+        sku: 'paan-mukhwas-300g',
+      },
+    ];
+
+    return {
+      totalGrams: 300,
+      dailyConsumptionRateGrams: dailyRate,
+      estimatedRunoutDays: 25,
+      targetReminderDay: 25,
+      isDueForReplenishment: false,
+      daysSinceLastOrder: null,
+      favoriteProduct: 'Artisanal Paan Mukhwas (300g)',
+      recommendedItems: defaultItems,
+      reorderCheckoutUrl: generatePrefilledCheckoutUrl(defaultItems, options.promoCode, websiteUrl),
+    };
+  }
+
+  const itemFrequency: Record<string, { count: number; item: ReplenishmentItem }> = {};
+
+  let totalGrams = 0;
+  for (const item of recentOrder.items || []) {
+    let weight = item.weightGrams;
+    if (!weight) {
+      if (item.productName.includes('500g')) weight = 500;
+      else if (item.productName.includes('300g')) weight = 300;
+      else if (item.productName.includes('350g')) weight = 350;
+      else if (item.productName.includes('700g')) weight = 700;
+      else if (item.productName.includes('150g')) weight = 150;
+      else if (item.productName.includes('100g')) weight = 100;
+      else if (item.productName.includes('200g')) weight = 200;
+      else weight = 300;
+    }
+    totalGrams += weight * item.quantity;
+  }
+
+  // Tally item popularity across all past orders to determine favorites
+  for (const order of orders) {
+    for (const item of order.items || []) {
+      const key = item.productName;
+      if (!itemFrequency[key]) {
+        itemFrequency[key] = {
+          count: 0,
+          item: {
+            name: item.productName,
+            flavor: item.flavor,
+            weightGrams: item.weightGrams || 300,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            sku: item.productName.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+          },
+        };
+      }
+      itemFrequency[key].count += item.quantity;
+    }
+  }
+
+  const sortedFavorites = Object.values(itemFrequency).sort((a, b) => b.count - a.count);
+  const favoriteProduct = sortedFavorites[0]?.item.name || 'Artisanal Paan Mukhwas (300g)';
+  const recommendedItems =
+    sortedFavorites.length > 0 ? sortedFavorites.slice(0, 3).map((f) => f.item) : [];
+
+  if (totalGrams <= 0) totalGrams = 300;
+
+  // Calculate estimated runout duration based on consumption velocity
+  // E.g., 300g / 12g per day = 25 days (~3-4 weeks for typical household)
+  const estimatedRunoutDays = Math.max(14, Math.round(totalGrams / dailyRate));
+  const targetReminderDay = Math.min(estimatedRunoutDays, 25); // Day 25 target for standard 3-4 week cycles
+
+  const now = Date.now();
+  const lastOrderTime = recentOrder.createdAt ? new Date(recentOrder.createdAt).getTime() : 0;
+  const daysSinceLastOrder =
+    lastOrderTime > 0 ? Math.floor((now - lastOrderTime) / (24 * 60 * 60 * 1000)) : null;
+
+  const isDueForReplenishment =
+    daysSinceLastOrder !== null &&
+    daysSinceLastOrder >= targetReminderDay &&
+    daysSinceLastOrder <= targetReminderDay + 15;
+
+  return {
+    totalGrams,
+    dailyConsumptionRateGrams: dailyRate,
+    estimatedRunoutDays,
+    targetReminderDay,
+    isDueForReplenishment,
+    daysSinceLastOrder,
+    favoriteProduct,
+    recommendedItems,
+    reorderCheckoutUrl: generatePrefilledCheckoutUrl(recommendedItems, options.promoCode, websiteUrl),
   };
 }
 
@@ -74,6 +276,8 @@ export interface EcommerceAdapter {
   getAllActiveProducts(): Promise<EcommerceProduct[]>;
   searchProducts(query: string, limit?: number): Promise<EcommerceProduct[]>;
   getMarketingCandidates(): Promise<MarketingSegmentCandidate[]>;
+  predictReplenishment(customerId: string): Promise<ReplenishmentPrediction | null>;
+  getWebsiteReviews(productId?: string): Promise<WebsiteReview[]>;
 }
 
 export function createEcommerceAdapter(): EcommerceAdapter {
@@ -284,7 +488,12 @@ export function createEcommerceAdapter(): EcommerceAdapter {
             candidates.push({
               customer: customerObj,
               segmentType: 'REPEAT_REPLENISHMENT',
-              contextData: { lastOrderDate: c.last_order_date },
+              contextData: {
+                lastOrderDate: c.last_order_date,
+                targetReminderDay: 25,
+                estimatedRunoutDays: 25,
+                favoriteProduct: 'Artisanal Paan Mukhwas (300g)',
+              },
             });
           } else if (
             c.total_orders >= 1 &&
@@ -334,6 +543,51 @@ export function createEcommerceAdapter(): EcommerceAdapter {
         return candidates;
       } catch (err) {
         logger.error({ err }, 'Failed calculating marketing segment candidates');
+        return [];
+      }
+    },
+
+    async predictReplenishment(customerId: string): Promise<ReplenishmentPrediction | null> {
+      try {
+        const orders = await this.getCustomerOrders(customerId);
+        return calculateConsumptionVelocity(orders);
+      } catch (err) {
+        logger.error({ err, customerId }, 'Failed predicting replenishment');
+        return null;
+      }
+    },
+
+    async getWebsiteReviews(productId?: string): Promise<WebsiteReview[]> {
+      try {
+        const client = createEcommerceSupabaseClient();
+        let query = client
+          .from('reviews')
+          .select('id, product_id, customer_id, customer_name, rating, title, comment, is_verified, created_at')
+          .order('created_at', { ascending: false });
+
+        if (productId) {
+          query = query.eq('product_id', productId);
+        }
+
+        const { data, error } = await query;
+        if (error) {
+          logger.warn({ error, productId }, 'Non-fatal error reading website reviews from ecommerce database');
+          return [];
+        }
+
+        return (data || []).map((row: any) => ({
+          id: row.id,
+          productId: row.product_id,
+          customerId: row.customer_id,
+          customerName: row.customer_name,
+          rating: Number(row.rating),
+          title: row.title,
+          comment: row.comment,
+          isVerified: Boolean(row.is_verified),
+          createdAt: row.created_at,
+        }));
+      } catch (err) {
+        logger.warn({ err, productId }, 'Failed querying website reviews from store database');
         return [];
       }
     },

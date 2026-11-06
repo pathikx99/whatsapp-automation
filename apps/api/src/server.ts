@@ -2,11 +2,12 @@ import fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import crypto from 'node:crypto';
-import { getConfig, getBusinessProfile } from '@whatsapp-platform/config';
+import { getConfig, getBusinessProfile, formatTemplate } from '@whatsapp-platform/config';
 import {
   checkLocalDbHealth,
   DbHealthResult,
   getPlatformRepository,
+  createEcommerceSupabaseClient,
 } from '@whatsapp-platform/database';
 import { AppError } from '@whatsapp-platform/shared';
 import { SupportOrchestrator } from '@whatsapp-platform/support-engine';
@@ -272,6 +273,32 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                 let messageBody = '';
                 let buttonId: string | undefined;
 
+                // 1. Capture & Store Meta/Instagram Click-to-WhatsApp (CTWA) Ad Referrals
+                let referralData: any = undefined;
+                if (message.referral) {
+                  referralData = {
+                    sourceId: message.referral.source_id,
+                    adId: message.referral.ad_id || message.referral.source_id,
+                    headline: message.referral.headline,
+                    body: message.referral.body,
+                    sourceType: message.referral.source_type,
+                    sourceUrl: message.referral.source_url,
+                    mediaType: message.referral.media_type,
+                    imageUrl: message.referral.image_url,
+                    videoUrl: message.referral.video_url,
+                    ctwaClid: message.referral.ctwa_clid,
+                    rawReferral: message.referral,
+                  };
+
+                  void platformRepo
+                    .recordAdReferral({
+                      phoneNumber: message.from,
+                      ...referralData,
+                    })
+                    .catch((err) => req.log.error({ err }, 'Error recording CTWA ad referral in integration schema'));
+                }
+
+                // 2. Handle Message Types: text, interactive, and native catalog orders
                 if (message.type === 'text' && message.text?.body) {
                   messageBody = message.text.body;
                 } else if (message.type === 'interactive') {
@@ -282,9 +309,25 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                     buttonId = message.interactive.list_reply.id;
                     messageBody = message.interactive.list_reply.title || '';
                   }
+                } else if (message.type === 'order' && message.order) {
+                  buttonId = 'btn_whatsapp_cart_order';
+                  messageBody = message.order.text || '[WhatsApp Catalog Cart Order]';
                 }
 
-                if (messageBody || buttonId) {
+                let catalogOrderData: any = undefined;
+                if (message.type === 'order' && message.order) {
+                  catalogOrderData = {
+                    catalogId: message.order.catalog_id,
+                    text: message.order.text,
+                    items: (message.order.product_items || []).map((i: any) => ({
+                      productRetailerId: i.product_retailer_id,
+                      quantity: i.quantity || 1,
+                      itemPrice: Number(i.item_price || 0),
+                    })),
+                  };
+                }
+
+                if (messageBody || buttonId || referralData) {
                   void supportOrchestrator
                     .processMessage({
                       from: message.from,
@@ -293,6 +336,8 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                       senderName,
                       timestamp: message.timestamp,
                       interactiveButtonId: buttonId,
+                      referral: referralData,
+                      catalogOrder: catalogOrderData,
                     })
                     .catch((err: unknown) => {
                       req.log.error(
@@ -328,20 +373,36 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     }
 
     const payload = req.body as {
-      event: 'order.created' | 'order.paid' | 'order.dispatched' | 'cart.abandoned';
-      customerPhone: string;
+      event:
+        | 'order.created'
+        | 'order.paid'
+        | 'order.dispatched'
+        | 'order.delivered'
+        | 'cart.abandoned'
+        | 'review.created';
+      customerPhone?: string;
       customerName?: string;
       orderNumber?: string;
-      items?: Array<{ name: string; quantity: number }>;
+      items?: Array<{ name: string; quantity: number; sku?: string; price?: number }>;
       totalAmount?: number;
       cartItemName?: string;
+      cartUrl?: string;
+      abandonedAt?: string;
+      cartAgeHours?: number;
+      abandonedDurationHours?: number;
+      requiresRefrigeration?: boolean;
+      reviewId?: string;
+      productId?: string;
+      rating?: number;
+      title?: string;
+      comment?: string;
     };
 
-    if (!payload?.event || !payload?.customerPhone) {
+    if (!payload?.event || (!payload?.customerPhone && payload?.event !== 'review.created')) {
       return reply.status(400).send({ error: 'Bad Request: Missing event or customerPhone' });
     }
 
-    const phone = payload.customerPhone;
+    const phone = payload.customerPhone || '';
     const name = payload.customerName || 'Friend';
 
     try {
@@ -350,62 +411,288 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
         case 'order.paid': {
           const itemsSummary =
             (payload.items || []).map((i) => `• ${i.name} (${i.quantity}x)`).join('\n') ||
-            'Mukhwas treats';
-          const msg =
-            `Hi ${name}! 🎉\n\n` +
-            `Thank you for your order *#${payload.orderNumber || ''}* at Mintara Bites! We're handcrafting your 100% supari-free treats with love in Surat, Gujarat.\n\n` +
-            `*Ordered Items:*\n${itemsSummary}\n\n` +
-            `*Total:* ₹${payload.totalAmount || ''}\n\n` +
-            `Track your order status anytime here: https://mintarabites.com/account/orders`;
+            'Handcrafted treats';
+          const msg = formatTemplate(businessProfile.notifications.orderCreated.body, {
+            customerName: name,
+            brandName: businessProfile.brand.name,
+            orderNumber: payload.orderNumber || '',
+            location: businessProfile.brand.location,
+            itemsSummary,
+            totalAmount: payload.totalAmount || '',
+            orderTrackingUrl:
+              businessProfile.brand.links?.orderTrackingUrl ||
+              businessProfile.brand.orderTrackingUrl,
+          });
+
+          const buttons = (businessProfile.notifications.orderCreated.buttonKeys || ['trackOrder'])
+            .map(
+              (k) =>
+                (
+                  businessProfile.navigation.buttons as Record<
+                    string,
+                    { id: string; title: string }
+                  >
+                )[k],
+            )
+            .filter((b): b is { id: string; title: string } => Boolean(b));
 
           await whatsappProvider.sendMessage({
             type: 'interactive',
             to: phone,
             body: msg,
-            buttons: [
-              { id: 'btn_track_order', title: '📦 Track on Web' },
-              { id: 'btn_talk_human', title: '🙋 Talk to Agent' },
-            ],
+            buttons:
+              buttons.length > 0 ? buttons : [{ id: 'btn_track_order', title: '📦 Track on Web' }],
           });
+
+          // Smart Replenishment Prediction Engine:
+          // Schedule replenishment reminder for day 25 (standard velocity for 300g Paan Mukhwas ~3-4 weeks)
+          const replenishmentDays = 25;
+          const scheduledTime = new Date(Date.now() + replenishmentDays * 24 * 60 * 60 * 1000).toISOString();
+          void platformRepo
+            .enqueueJob(
+              'replenishment_reminder',
+              {
+                customerPhone: phone,
+                customerName: name,
+                orderNumber: payload.orderNumber,
+                items: payload.items || [{ name: 'Artisanal Paan Mukhwas (300g)', quantity: 1, unitPrice: 249 }],
+                estimatedDays: replenishmentDays,
+              },
+              scheduledTime,
+            )
+            .catch((err) => req.log.error({ err, phone }, 'Failed scheduling replenishment reminder job'));
           break;
         }
 
         case 'order.dispatched': {
-          const msg =
-            `Hi ${name}! 🚚\n\n` +
-            `Exciting news! Your Mintara Bites order *#${payload.orderNumber || ''}* has been freshly packed and handed to our courier partner!\n\n` +
-            `Track live courier updates directly on your dashboard:\n` +
-            `👉 https://mintarabites.com/account/orders`;
+          const msg = formatTemplate(businessProfile.notifications.orderDispatched.body, {
+            customerName: name,
+            brandName: businessProfile.brand.name,
+            orderNumber: payload.orderNumber || '',
+            orderTrackingUrl:
+              businessProfile.brand.links?.orderTrackingUrl ||
+              businessProfile.brand.orderTrackingUrl,
+          });
+
+          const buttons = (
+            businessProfile.notifications.orderDispatched.buttonKeys || ['trackOrder']
+          )
+            .map(
+              (k) =>
+                (
+                  businessProfile.navigation.buttons as Record<
+                    string,
+                    { id: string; title: string }
+                  >
+                )[k],
+            )
+            .filter((b): b is { id: string; title: string } => Boolean(b));
 
           await whatsappProvider.sendMessage({
             type: 'interactive',
             to: phone,
             body: msg,
-            buttons: [
-              { id: 'btn_track_order', title: '📦 Track on Web' },
-              { id: 'btn_talk_human', title: '🙋 Talk to Agent' },
-            ],
+            buttons:
+              buttons.length > 0 ? buttons : [{ id: 'btn_track_order', title: '📦 Track on Web' }],
           });
           break;
         }
 
-        case 'cart.abandoned': {
-          const msg =
-            `Hi ${name}! 🌿\n\n` +
-            `We noticed you left *${payload.cartItemName || 'your favorite artisanal treats'}* in your cart.\n\n` +
-            `Your cart is reserved! Finish your checkout now for pure, 100% supari-free freshness:\n` +
-            `👉 https://mintarabites.com/cart`;
+        case 'order.delivered': {
+          // Check if any ordered product requires refrigeration or special post-completion care
+          const coldProducts = [
+            ...businessProfile.products
+              .filter((p) => p.requiresRefrigeration)
+              .map((p) => p.title.toLowerCase()),
+            ...businessProfile.offerings
+              .filter((o) => o.requiresRefrigeration)
+              .map((o) => o.title.toLowerCase()),
+          ];
+
+          const requiresColdStorage =
+            payload.requiresRefrigeration ??
+            (payload.items && payload.items.length > 0
+              ? payload.items.some((i) => {
+                  const n = i.name.toLowerCase();
+                  return (
+                    coldProducts.some((cp) => n.includes(cp)) ||
+                    n.includes('paan') ||
+                    n.includes('trio') ||
+                    n.includes('family') ||
+                    n.includes('gulkand')
+                  );
+                })
+              : true); // Default true for artisanal mukhwas if unspecified
+
+          let msg: string;
+          if (requiresColdStorage) {
+            msg =
+              businessProfile.notifications.orderDelivered?.refrigerationNudge ||
+              'Your Mintara Paan Mukhwas has arrived! 🌿 Please pop it into the refrigerator right away to preserve its crisp texture and authentic rose aroma.';
+          } else {
+            msg = formatTemplate(
+              businessProfile.notifications.orderDelivered?.standardBody ||
+                'Hi {{customerName}}! 🎉\n\nYour {{brandName}} order *#{{orderNumber}}* has been delivered! Enjoy your freshly handcrafted treats.\n\nExplore more treats anytime: {{websiteUrl}}',
+              {
+                customerName: name,
+                brandName: businessProfile.brand.name,
+                orderNumber: payload.orderNumber || '',
+                websiteUrl:
+                  businessProfile.brand.links?.websiteUrl ||
+                  businessProfile.brand.websiteUrl,
+              },
+            );
+          }
+
+          const buttons = (
+            businessProfile.notifications.orderDelivered?.buttonKeys || ['browseCatalog']
+          )
+            .map(
+              (k) =>
+                (
+                  businessProfile.navigation.buttons as Record<
+                    string,
+                    { id: string; title: string }
+                  >
+                )[k],
+            )
+            .filter((b): b is { id: string; title: string } => Boolean(b));
 
           await whatsappProvider.sendMessage({
             type: 'interactive',
             to: phone,
             body: msg,
-            buttons: [
-              { id: 'btn_browse_catalog', title: '🛒 Browse Treats' },
-              { id: 'btn_talk_human', title: '🙋 Talk to Agent' },
-            ],
+            buttons:
+              buttons.length > 0
+                ? buttons
+                : [{ id: 'btn_browse_catalog', title: '🛒 Browse Treats' }],
           });
+
+          // Automated CSAT / Review Collection:
+          // 3 days post-delivery, trigger a rating prompt (1–5 stars)
+          const csatDelayMs = 3 * 24 * 60 * 60 * 1000;
+          const scheduledTime = new Date(Date.now() + csatDelayMs).toISOString();
+          void platformRepo
+            .enqueueJob(
+              'csat_review_prompt',
+              {
+                customerPhone: phone,
+                customerName: name,
+                orderNumber: payload.orderNumber,
+              },
+              scheduledTime,
+            )
+            .catch((err) =>
+              req.log.error({ err, phone }, 'Failed scheduling CSAT review prompt job'),
+            );
           break;
+        }
+
+        case 'cart.abandoned': {
+          const cleanPhone = phone.replace(/\D/g, '');
+          const phoneSuffix = cleanPhone.slice(-4) || '10';
+          const promoCode = `TREAT10-${phoneSuffix}`;
+
+          // Determine cart abandonment duration
+          let durationHours = payload.abandonedDurationHours ?? payload.cartAgeHours;
+          if (durationHours === undefined && payload.abandonedAt) {
+            durationHours = (Date.now() - new Date(payload.abandonedAt).getTime()) / (1000 * 60 * 60);
+          }
+          // Default to > 4 hours if not explicitly set to lower
+          const isOverFourHours = durationHours === undefined || durationHours > 4;
+
+          const baseCartUrl =
+            payload.cartUrl ||
+            businessProfile.brand.links?.cartUrl ||
+            `${businessProfile.brand.websiteUrl}/cart`;
+
+          let msg: string;
+          let issuedPromoCode: string | undefined = undefined;
+
+          if (isOverFourHours) {
+            issuedPromoCode = promoCode;
+            const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+            // Persist single-use personalized promo code in database
+            await platformRepo
+              .createPromoCode({
+                code: promoCode,
+                type: 'percent',
+                value: 10,
+                expiresAt,
+                usageLimit: 1,
+              })
+              .catch((err) => req.log.warn({ err, promoCode }, 'Non-fatal error creating promo code'));
+
+            const cartUrlWithPromo = `${baseCartUrl}${baseCartUrl.includes('?') ? '&' : '?'}discount=${promoCode}&utm_source=whatsapp&utm_medium=cart_abandoned`;
+
+            msg =
+              `Hi ${name}! 🌿\n\n` +
+              `We noticed you left *${payload.cartItemName || 'your favorite artisanal treats'}* in your cart.\n\n` +
+              `To help you complete your order, here is an exclusive single-use 10% discount: *${promoCode}* ✨\n\n` +
+              `⏰ *Hurry, your personal coupon expires in 24 hours!*\n\n` +
+              `Finish your checkout now for pure, 100% supari-free freshness:\n👉 ${cartUrlWithPromo}`;
+          } else {
+            msg = formatTemplate(businessProfile.notifications.cartAbandoned.body, {
+              customerName: name,
+              brandName: businessProfile.brand.name,
+              cartItemName: payload.cartItemName || 'your favorite artisanal treats',
+              cartUrl: baseCartUrl,
+            });
+          }
+
+          const buttons = (
+            businessProfile.notifications.cartAbandoned.buttonKeys || ['browseCatalog']
+          )
+            .map(
+              (k) =>
+                (
+                  businessProfile.navigation.buttons as Record<
+                    string,
+                    { id: string; title: string }
+                  >
+                )[k],
+            )
+            .filter((b): b is { id: string; title: string } => Boolean(b));
+
+          await whatsappProvider.sendMessage({
+            type: 'interactive',
+            to: phone,
+            body: msg,
+            buttons:
+              buttons.length > 0
+                ? buttons
+                : [{ id: 'btn_browse_catalog', title: '🛒 Browse Treats' }],
+          });
+
+          return reply.status(200).send({
+            status: 'dispatched',
+            event: payload.event,
+            recipient: phone,
+            promoCode: issuedPromoCode,
+          });
+        }
+
+        case 'review.created': {
+          const ratingVal = payload.rating ?? 5;
+          const reviewRecord = await platformRepo.upsertPlatformReview({
+            id: payload.reviewId,
+            externalReviewId: payload.reviewId ? `web_${payload.reviewId}` : undefined,
+            platform: 'website',
+            customerName: payload.customerName || 'Website Customer',
+            customerPhone: payload.customerPhone,
+            orderNumber: payload.orderNumber,
+            rating: ratingVal,
+            title: payload.title,
+            comment: payload.comment || 'Verified website review',
+            verified: true,
+          });
+
+          return reply.status(200).send({
+            status: 'synced',
+            event: 'review.created',
+            review: reviewRecord,
+          });
         }
       }
 
@@ -417,6 +704,137 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       return reply.status(500).send({ error: 'Internal Error processing ecommerce webhook' });
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // 3.1 Logistics & Courier Webhook Ingestion (Shiprocket, Delhivery, Bluedart, etc.)
+  // Proactive NDR (Non-Delivery Report) Resolution
+  // ---------------------------------------------------------------------------
+  const handleLogisticsWebhook = async (req: FastifyRequest, reply: FastifyReply) => {
+    // Secret authentication check (optional if configured)
+    const authHeader = req.headers.authorization;
+    const customHeader = req.headers['x-webhook-secret'];
+    const expectedSecret = config.ECOMMERCE_WEBHOOK_SECRET;
+
+    if (expectedSecret) {
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : customHeader;
+      if (token && token !== expectedSecret) {
+        return reply.status(401).send({ error: 'Unauthorized: Invalid courier webhook secret' });
+      }
+    }
+
+    const payload = req.body as {
+      courier?: string;
+      event?: string;
+      status?: string;
+      current_status?: string;
+      shiprocket_status?: string;
+      ndr_status?: string;
+      reason?: string;
+      ndr_reason?: string;
+      remarks?: string;
+      failure_reason?: string;
+      orderNumber?: string;
+      order_number?: string;
+      order_id?: string | number;
+      customerPhone?: string;
+      customer_phone?: string;
+      phone?: string;
+      customerName?: string;
+      customer_name?: string;
+      name?: string;
+      awb?: string;
+      awb_code?: string;
+    };
+
+    if (!payload) {
+      return reply.status(400).send({ error: 'Bad Request: Missing courier webhook payload' });
+    }
+
+    const courier = payload.courier || 'courier';
+    const statusString = (
+      payload.status ||
+      payload.current_status ||
+      payload.event ||
+      payload.ndr_status ||
+      ''
+    ).toUpperCase();
+
+    const isNdr =
+      statusString.includes('NDR') ||
+      statusString.includes('UNDELIVERED') ||
+      statusString.includes('FAIL') ||
+      statusString.includes('ATTEMPT') ||
+      statusString.includes('UNAVAILABLE') ||
+      statusString.includes('INCORRECT') ||
+      payload.event === 'shipment.ndr';
+
+    const phone = payload.customerPhone || payload.customer_phone || payload.phone;
+    const customerName = payload.customerName || payload.customer_name || payload.name || 'Friend';
+    const orderNumber = String(payload.orderNumber || payload.order_number || payload.order_id || '');
+    const reason =
+      payload.ndr_reason ||
+      payload.reason ||
+      payload.remarks ||
+      payload.failure_reason ||
+      'Customer unavailable / Address incomplete';
+
+    req.log.info(
+      { courier, statusString, isNdr, phone, orderNumber, reason },
+      'Received logistics webhook event',
+    );
+
+    if (isNdr && phone) {
+      // 1. Record NDR instruction request in database
+      await platformRepo
+        .recordNdrInstruction({
+          customerPhone: phone,
+          orderNumber,
+          instructions: `Delivery attempt failed: ${reason}`,
+          courier,
+          status: 'submitted',
+        })
+        .catch((err) => req.log.warn({ err }, 'Failed persisting NDR instruction record'));
+
+      // 2. Dispatch proactive WhatsApp notification asking for updated landmark/instructions before RTO
+      const alertMsg = formatTemplate(
+        businessProfile.notifications.ndrAlert?.body ||
+          'Hi {{customerName}}! 🚚\n\nOur courier partner attempted to deliver your {{brandName}} order *#{{orderNumber}}*, but the delivery could not be completed (Reason: {{reason}}).\n\nTo avoid Return to Origin (RTO), please provide updated delivery instructions, an alternative timing, or nearby landmark by replying directly to this message.',
+        {
+          customerName,
+          brandName: businessProfile.brand.name,
+          orderNumber: orderNumber ? `#${orderNumber}` : 'recent order',
+          reason,
+        },
+      );
+
+      await whatsappProvider.sendMessage({
+        type: 'interactive',
+        to: phone,
+        body: alertMsg,
+        buttons: [
+          { id: 'btn_ndr_update_address', title: '📍 Update Landmark' },
+          { id: 'btn_ndr_reattempt', title: '📦 Re-attempt' },
+        ],
+      });
+
+      return reply.status(200).send({
+        status: 'ndr_alert_sent',
+        recipient: phone,
+        courier,
+        reason,
+        orderNumber,
+      });
+    }
+
+    return reply.status(200).send({
+      status: 'received',
+      courier,
+      event: payload.event || payload.status,
+    });
+  };
+
+  app.post('/webhooks/logistics', handleLogisticsWebhook);
+  app.post('/webhooks/courier', handleLogisticsWebhook);
 
   // ---------------------------------------------------------------------------
   // 4. Marketing Campaign Trigger
@@ -444,6 +862,14 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   app.get('/api/analytics/overview', async (_req, reply) => {
     const summary = await platformRepo.getAnalyticsSummary();
     return reply.status(200).send({ status: 'ok', summary });
+  });
+
+  app.get('/api/analytics/roas', async (req, reply) => {
+    const query = req.query as { adId?: string; spend?: string };
+    const adId = query.adId || 'all';
+    const spend = query.spend ? parseFloat(query.spend) : 0;
+    const report = await platformRepo.calculateROAS(adId, spend);
+    return reply.status(200).send({ status: 'ok', report });
   });
 
   app.get('/api/support/tickets', async (req, reply) => {
@@ -482,6 +908,113 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       ticket: resolved,
       message: 'Ticket resolved and AI bot unmuted for customer',
     });
+  });
+
+  app.get('/api/logistics/ndr', async (req, reply) => {
+    const query = req.query as { phone?: string };
+    const instructions = await platformRepo.getNdrInstructions(query.phone);
+    return reply.status(200).send({ status: 'ok', count: instructions.length, instructions });
+  });
+
+  app.get('/api/customer/reviews', async (req, reply) => {
+    const query = req.query as { phone?: string };
+    const reviews = await platformRepo.getCustomerReviews(query.phone);
+    return reply.status(200).send({ status: 'ok', count: reviews.length, reviews });
+  });
+
+  app.get('/api/reviews/summary', async (_req, reply) => {
+    const summary = await platformRepo.getUnifiedReviewSummary();
+    return reply.status(200).send({ status: 'ok', summary });
+  });
+
+  app.post('/api/reviews/batch-sync', async (req, reply) => {
+    const body = req.body as {
+      reviews: Array<{
+        id?: string;
+        externalReviewId?: string;
+        platform: 'website' | 'google' | 'whatsapp' | 'amazon' | 'trustpilot' | 'other';
+        rating: number;
+        customerName?: string;
+        customerPhone?: string;
+        orderNumber?: string;
+        title?: string;
+        comment?: string;
+        status?: 'submitted' | 'escalated' | 'resolved' | 'published';
+        verified?: boolean;
+        createdAt?: string;
+      }>;
+    };
+
+    if (!body?.reviews || !Array.isArray(body.reviews)) {
+      return reply.status(400).send({ error: 'Missing or invalid reviews array in payload' });
+    }
+
+    const result = await platformRepo.batchSyncReviews(body.reviews);
+    const summary = await platformRepo.getUnifiedReviewSummary();
+
+    return reply.status(200).send({
+      status: 'synced',
+      syncedCount: result.synced,
+      summary,
+      reviews: result.reviews,
+    });
+  });
+
+  app.patch('/api/reviews/:id', async (req, reply) => {
+    const params = req.params as { id: string };
+    const body = req.body as { rating: number; comment?: string };
+
+    if (body?.rating === undefined || typeof body.rating !== 'number') {
+      return reply.status(400).send({ error: 'Invalid or missing rating number' });
+    }
+
+    const updated = await platformRepo.updateReviewRating(params.id, body.rating, body.comment);
+    if (!updated) {
+      return reply.status(404).send({ error: 'Review not found' });
+    }
+
+    const summary = await platformRepo.getUnifiedReviewSummary();
+    return reply.status(200).send({ status: 'updated', review: updated, summary });
+  });
+
+  app.post('/api/reviews/sync-from-store', async (req, reply) => {
+    try {
+      const client = createEcommerceSupabaseClient();
+      const { data, error } = await client
+        .from('reviews')
+        .select('id, product_id, customer_id, customer_name, rating, title, comment, is_verified, created_at')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        req.log.warn({ error }, 'Error fetching reviews from ecommerce database (will use cache)');
+      }
+
+      const websiteReviews = (data || []).map((row: any) => ({
+        id: row.id,
+        productId: row.product_id,
+        customerName: row.customer_name,
+        rating: Number(row.rating),
+        title: row.title,
+        comment: row.comment,
+        isVerified: Boolean(row.is_verified),
+        createdAt: row.created_at,
+      }));
+
+      if (websiteReviews.length > 0) {
+        await platformRepo.syncWebsiteReviews(websiteReviews);
+      }
+      const summary = await platformRepo.getUnifiedReviewSummary();
+
+      return reply.status(200).send({
+        status: 'synced',
+        syncedCount: websiteReviews.length,
+        summary,
+        reviews: websiteReviews,
+      });
+    } catch (err) {
+      req.log.error({ err }, 'Failed syncing reviews from store database');
+      return reply.status(500).send({ error: 'Failed syncing reviews from store database' });
+    }
   });
 
   return app;

@@ -7,7 +7,7 @@ import {
 import { createAiProvider, AiProvider } from '@whatsapp-platform/ai';
 import { createWhatsAppProvider, WhatsAppProvider } from '@whatsapp-platform/whatsapp';
 import { getPlatformRepository, PlatformRepository } from '@whatsapp-platform/database';
-import { getBusinessProfile, BusinessProfile } from '@whatsapp-platform/config';
+import { getBusinessProfile, BusinessProfile, formatTemplate } from '@whatsapp-platform/config';
 
 const logger = createLogger({ name: 'marketing-orchestrator' });
 
@@ -152,22 +152,41 @@ export class MarketingOrchestrator {
   ): Promise<string> {
     const customerName = candidate.customer.firstName || 'Friend';
     const productNames = products.map((p) => p.title).join(', ');
+    const campaigns = this.businessProfile.marketingCampaigns;
 
     let promptContext = '';
     switch (candidate.segmentType) {
       case 'FIRST_ORDER_NURTURE':
-        promptContext = `The customer completed their first purchase a week ago. Thank them for supporting Mintara Bites, ask how they enjoyed their digestive treat, and recommend exploring another signature favorite (like Seeds Fusion or Coconut Crunch) with a 10% repeat order code "MINTARA10".`;
+        promptContext = formatTemplate(campaigns.firstOrderNurture.promptInstruction, {
+          brandName: this.businessProfile.brand.name,
+          discountCode: campaigns.firstOrderNurture.discountCode,
+          customerName,
+        });
         break;
       case 'REPEAT_REPLENISHMENT':
-        promptContext = `The customer is a valued repeat customer whose order was around 30 days ago. Remind them gently that their daily mukhwas jar might be getting empty! Suggest restocking their digestive freshness with fast delivery.`;
+        promptContext = formatTemplate(campaigns.repeatReplenishment.promptInstruction, {
+          brandName: this.businessProfile.brand.name,
+          customerName,
+        });
         break;
       case 'CART_ABANDONED':
-        promptContext = `The customer added "${candidate.contextData?.cartItemName || 'their favorite treat'}" to their cart a few hours ago but hasn't checked out yet. Friendly reminder that their cart is reserved, mentioning our handcrafted fresh quality.`;
+        promptContext = formatTemplate(campaigns.cartAbandoned.promptInstruction, {
+          brandName: this.businessProfile.brand.name,
+          cartItemName: candidate.contextData?.cartItemName || 'their favorite treat',
+          customerName,
+        });
         break;
       case 'WIN_BACK':
-        promptContext = `The customer hasn't ordered in over 60 days. Welcome them back with an exclusive 15% discount code "WELCOME15" to try our newest fresh batches.`;
+        promptContext = formatTemplate(campaigns.winBack.promptInstruction, {
+          brandName: this.businessProfile.brand.name,
+          discountCode: campaigns.winBack.discountCode,
+          customerName,
+        });
         break;
     }
+
+    const websiteUrl =
+      this.businessProfile.brand.links?.websiteUrl || this.businessProfile.brand.websiteUrl;
 
     const systemPrompt = `You are an expert, respectful WhatsApp marketing copywriter for "${this.businessProfile.brand.name}" (${this.businessProfile.brand.location}) — ${this.businessProfile.brand.tagline}.
 
@@ -175,7 +194,7 @@ Guidelines:
 - Length: Max 3-4 short, punchy sentences.
 - Tone: Warm, appetizing, friendly, non-spammy.
 - Format: Clean WhatsApp styling (use *bold* for product names/codes, subtle emojis).
-- Include store link: ${this.businessProfile.brand.websiteUrl}
+- Include store link: ${websiteUrl}
 - Brand Highlights: ${(this.businessProfile.brandHighlights || []).slice(0, 3).join('; ')}`;
 
     const userPrompt = `Draft a personalized WhatsApp message for:

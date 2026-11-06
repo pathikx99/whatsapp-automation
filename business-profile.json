@@ -1,17 +1,31 @@
 {
+  "$schema": "./business-profile.schema.json",
+  "businessType": "ecommerce",
+  "terminology": {
+    "itemNoun": "treat",
+    "itemNounPlural": "treats",
+    "actionVerb": "Order",
+    "browseButtonTitle": "🛒 Browse Treats",
+    "trackingButtonTitle": "📦 Track on Web",
+    "reorderButtonTitle": "🔄 Reorder Favorites"
+  },
   "brand": {
     "name": "Mintara Bites",
-    "legalName": "Mintara Bites",
+    "legalName": "Mintara Bites LLP",
     "location": "Surat, Gujarat, India",
     "fssaiNumber": "20726031000436",
-    "tagline": "A Perfect Finish to Every Meal | 100% Supari & Tobacco Free Handcrafted Mukhwas",
+    "tagline": "A Perfect Finish to Every Meal",
     "description": "Mintara Bites is a premium artisanal brand based in Surat, Gujarat, crafting 100% supari-free, tobacco-free Indian mouth fresheners and digestive treats packed fresh on order.",
-    "websiteUrl": "https://mintarabites.com",
-    "orderTrackingUrl": "https://mintarabites.com/account/orders",
-    "instagram": "@mintarabites",
-    "instagramUrl": "https://instagram.com/mintarabites",
-    "supportEmail": "contact@mintarabites.com",
-    "supportPhone": "+91 94292 43344"
+    "links": {
+      "websiteUrl": "https://mintarabites.com",
+      "cartUrl": "https://mintarabites.com/cart",
+      "orderTrackingUrl": "https://mintarabites.com/account/orders",
+      "instagram": "@mintarabites",
+      "instagramUrl": "https://instagram.com/mintarabites",
+      "googleReviewUrl": "https://g.page/r/mintarabites/review",
+      "supportEmail": "contact.mintarabites@gmail.com",
+      "supportPhone": "+91 7490095115"
+    }
   },
   "persona": {
     "role": "WhatsApp AI Concierge & Customer Assistant",
@@ -21,8 +35,14 @@
       "Always emphasize that our products are 100% supari-free (no areca nut) and 100% tobacco-free.",
       "If the customer asks about storage or refrigeration, clarify that Paan Mukhwas contains pure natural gulkand and must be refrigerated upon arrival to preserve crispness and aroma. Seeds Fusion and Coconut Crunch can be kept at room temperature in an airtight jar.",
       "Highlight that treats are made fresh on order and packed right before dispatch.",
-      "For wholesale, weddings, or corporate bulk gifting inquiries, invite them to share their requirement or connect with human support.",
       "Keep answers within 2-3 short, mobile-friendly paragraphs."
+    ],
+    "escalationCriteria": [
+      "Customer requests refunds, replacements, returns, or order cancellations.",
+      "Customer reports damaged, broken, missing, or compromised goods.",
+      "Customer requests changing delivery address on an existing order.",
+      "Customer has a question or issue you cannot answer from available knowledge.",
+      "Customer explicitly asks to speak with a human or expresses unresolved frustration."
     ]
   },
   "brandHighlights": [
@@ -37,15 +57,261 @@
     "FREE Pan-India express delivery on all orders ₹699 and above.",
     "Instagram: @mintarabites (https://instagram.com/mintarabites)."
   ],
+  "knowledge": {
+    "values": [
+      "100% Supari & Areca Nut Free: Zero areca nut or toxic chewing agents.",
+      "100% Tobacco Free: Clean, wholesome treats for the entire family.",
+      "Freshly Packed on Order: Made in small artisanal batches and packed right before courier dispatch for maximum aroma and crispness.",
+      "Natural Ingredients: Prepared with pure rose petal gulkand, premium sweet variyali, slow-roasted dhanadal, toasted coconut, and wholesome seeds."
+    ],
+    "policies": {
+      "shipping": "Express courier across India. Free delivery on orders over ₹699 or with promo code MINFREE.",
+      "orderTracking": "For live courier updates and tracking, instruct customers to check their dashboard at https://mintarabites.com/account/orders. Never attempt to guess or invent tracking numbers on WhatsApp.",
+      "wholesaleAndGifting": "We provide custom trial boxes for cafes, restaurants, wedding hampers, and corporate gifting. Inquire via WhatsApp or contact.mintarabites@gmail.com."
+    },
+    "customMarkdown": "## Storage & Shelf Life Guidelines\n- **Paan Mukhwas**: Store in the refrigerator upon receipt. Shelf life is 3 months refrigerated.\n- **Seeds Fusion & Coconut Crunch**: Store in an airtight container at cool room temperature away from direct sunlight. Shelf life is 6 months."
+  },
+  "navigation": {
+    "buttons": {
+      "browseCatalog": {
+        "id": "btn_browse_catalog",
+        "title": "🛒 Browse Treats"
+      },
+      "trackOrder": {
+        "id": "btn_track_order",
+        "title": "📦 Track on Web"
+      },
+      "resumeBot": {
+        "id": "btn_resume_bot",
+        "title": "🤖 Resume AI Bot"
+      },
+      "reorderFavorites": {
+        "id": "btn_reorder_favorites",
+        "title": "🔄 Reorder Favorites"
+      },
+      "ndrUpdateAddress": {
+        "id": "btn_ndr_update_address",
+        "title": "📍 Update Landmark"
+      },
+      "ndrReattempt": {
+        "id": "btn_ndr_reattempt",
+        "title": "📦 Re-attempt"
+      },
+      "csat5Star": {
+        "id": "btn_csat_5_stars",
+        "title": "⭐⭐⭐⭐⭐ (5 Stars)"
+      },
+      "csat4Star": {
+        "id": "btn_csat_4_stars",
+        "title": "⭐⭐⭐⭐ (4 Stars)"
+      },
+      "csatLowStar": {
+        "id": "btn_csat_low_stars",
+        "title": "⭐ (1-3 Stars)"
+      }
+    },
+    "catalogBrowse": {
+      "header": "Here are our signature handcrafted artisanal mukhwas: 🌿",
+      "footer": "All treats are *100% supari-free* and *tobacco-free*!\nExplore & order online: {{websiteUrl}}\nFollow us on Instagram: {{instagram}}"
+    }
+  },
   "quickButtons": [
-    { "id": "btn_browse_catalog", "title": "🛒 Browse Treats" },
-    { "id": "btn_track_order", "title": "📦 Track on Web" },
-    { "id": "btn_talk_human", "title": "🙋 Talk to Agent" }
+    {
+      "id": "btn_browse_catalog",
+      "title": "🛒 Browse Treats"
+    },
+    {
+      "id": "btn_track_order",
+      "title": "📦 Track on Web"
+    }
   ],
   "catalogBrowse": {
     "header": "Here are our signature handcrafted artisanal mukhwas: 🌿",
-    "footer": "All treats are *100% supari-free* and *tobacco-free*!\nExplore & order online: https://mintarabites.com\nFollow us on Instagram: @mintarabites"
+    "footer": "All treats are *100% supari-free* and *tobacco-free*!\nExplore & order online: {{websiteUrl}}\nFollow us on Instagram: {{instagram}}"
   },
+  "notifications": {
+    "orderCreated": {
+      "body": "Hi {{customerName}}! 🎉\n\nThank you for your order *#{{orderNumber}}* at {{brandName}}! We're handcrafting your 100% supari-free treats with love in {{location}}.\n\n*Ordered Items:*\n{{itemsSummary}}\n\n*Total:* ₹{{totalAmount}}\n\nTrack your order status anytime here: {{orderTrackingUrl}}",
+      "buttonKeys": ["trackOrder"]
+    },
+    "orderDispatched": {
+      "body": "Hi {{customerName}}! 🚚\n\nExciting news! Your {{brandName}} order *#{{orderNumber}}* has been freshly packed and handed to our courier partner!\n\nTrack live courier updates directly on your dashboard:\n👉 {{orderTrackingUrl}}",
+      "buttonKeys": ["trackOrder"]
+    },
+    "orderDelivered": {
+      "refrigerationNudge": "Your Mintara Paan Mukhwas has arrived! 🌿 Please pop it into the refrigerator right away to preserve its crisp texture and authentic rose aroma.",
+      "standardBody": "Hi {{customerName}}! 🎉\n\nYour {{brandName}} order *#{{orderNumber}}* has been delivered! Enjoy your freshly handcrafted treats.\n\nExplore more treats anytime: {{websiteUrl}}",
+      "buttonKeys": ["browseCatalog"]
+    },
+    "ndrAlert": {
+      "body": "Hi {{customerName}}! 🚚\n\nOur courier partner attempted to deliver your {{brandName}} order *#{{orderNumber}}*, but the delivery could not be completed (Reason: {{reason}}).\n\nTo avoid Return to Origin (RTO), please provide updated delivery instructions, an alternative timing, or nearby landmark by replying directly to this message.",
+      "buttonKeys": ["ndrUpdateAddress", "ndrReattempt"]
+    },
+    "csatPrompt": {
+      "body": "Hi {{customerName}}! ✨\n\nHow was your experience with {{brandName}}? We hope you are loving your handcrafted mouth fresheners!\n\nPlease rate your experience with us (1–5 stars):",
+      "buttonKeys": ["csat5Star", "csat4Star", "csatLowStar"]
+    },
+    "cartAbandoned": {
+      "body": "Hi {{customerName}}! 🌿\n\nWe noticed you left *{{cartItemName}}* in your cart.\n\nYour cart is reserved! Finish your checkout now for pure, 100% supari-free freshness:\n👉 {{cartUrl}}",
+      "buttonKeys": ["browseCatalog"]
+    },
+    "replenishmentOrRebooking": {
+      "body": "Hi {{customerName}}! 🌿\n\nYour daily jar of *{{favoriteItem}}* might be running low! A 300g pack lasts about 3-4 weeks for a typical household.\n\nKeep your daily after-meal digestive freshness uninterrupted — handcrafted fresh and packed right before dispatch.\n\n👉 *Tap to reorder your favorites in 1 click:*\n{{reorderOrBookingUrl}}",
+      "cycleDays": 25,
+      "buttonKeys": ["reorderFavorites", "browseCatalog"]
+    }
+  },
+  "marketingCampaigns": {
+    "firstOrderNurture": {
+      "discountCode": "MINTARA10",
+      "promptInstruction": "The customer completed their first purchase a week ago. Thank them for supporting {{brandName}}, ask how they enjoyed their fresh treat, and recommend exploring another signature favorite (like Seeds Fusion or Coconut Crunch) with a 10% repeat order code '{{discountCode}}'."
+    },
+    "repeatReplenishment": {
+      "reminderCycleDays": 30,
+      "promptInstruction": "The customer is a valued repeat customer whose order was around 30 days ago. Remind them gently that their daily mukhwas jar might be getting empty! Suggest restocking their digestive freshness with fast delivery."
+    },
+    "cartAbandoned": {
+      "promptInstruction": "The customer added '{{cartItemName}}' to their cart a few hours ago but hasn't checked out yet. Friendly reminder that their cart is reserved, mentioning our handcrafted fresh quality."
+    },
+    "winBack": {
+      "discountCode": "WELCOME15",
+      "inactiveThresholdDays": 60,
+      "promptInstruction": "The customer hasn't ordered in over 60 days. Welcome them back with an exclusive 15% discount code '{{discountCode}}' to try our newest fresh batches."
+    }
+  },
+  "supportMessages": {
+    "escalationCustomerNotice": "Hello {{customerName}}! 🙏\n\nI have flagged this for our human support team at {{brandName}} and transferred your order details and full conversation history so you won't need to repeat yourself.\n\nA team member is reviewing this now and will step into this chat shortly.\n\n*(To resume automated answers anytime, reply with \"start\" or tap below).*",
+    "escalationAdminDossier": "🚨 *{{brandName}} - Support Escalation Alert*\n\n• *Customer:* {{customerName}} (+{{customerPhone}})\n• *Direct Chat:* https://wa.me/{{customerPhone}}\n• *Ticket ID:* {{ticketId}}\n\n📦 *Order History:*\n{{ordersSummary}}\n\n⚠️ *Reason for Escalation:*\n{{escalationReason}}\n\n📜 *Conversation Transcript:*\n{{transcript}}\n\n🔒 AI assistant is now MUTED for this customer until resolved.",
+    "deliveryRedirect": "Hi {{customerName}}! 📦\n\nFor real-time delivery status and live courier tracking, please check your order dashboard directly on our store:\n👉 {{orderTrackingUrl}}\n\n*(For your privacy, account security, and real-time carrier sync, live delivery tracking is viewed directly on our web dashboard rather than WhatsApp).* \n\nFeel free to ask if you have any questions about our products, ingredients, or storage! ✨",
+    "statusRedirect": "Hi {{customerName}}! 📦\n\nFor real-time delivery status and live courier tracking, please check your order dashboard directly on our store:\n👉 {{orderTrackingUrl}}\n\n*(For your privacy, account security, and real-time carrier sync, live delivery tracking is viewed directly on our web dashboard rather than WhatsApp).* \n\nFeel free to ask if you have any questions about our products, ingredients, or storage! ✨",
+    "botResumed": "Welcome back, {{customerName}}! ✨\n\nOur automated assistant is back online. How can I help you today?",
+    "fallbackError": "Thank you for contacting {{brandName}}! 🙏\n\nWe received your message and our team is looking into it. If you need immediate assistance, please visit {{websiteUrl}} or email {{supportEmail}}."
+  },
+  "offerings": [
+    {
+      "id": "paan-mukhwas",
+      "title": "Artisanal Paan Mukhwas",
+      "category": "Paan Mukhwas",
+      "type": "product",
+      "price": "₹149 (150g) / ₹249 (300g) / ₹399 (500g)",
+      "description": "Traditional Calcuttia paan leaf infusion with natural rose gulkand, sweet fennel & roasted dhanadal. 100% supari-free. Keep refrigerated upon arrival.",
+      "requiresRefrigeration": true,
+      "checkoutUrl": "https://mintarabites.com/cart",
+      "variants": [
+        {
+          "id": "btn_size_paan_150g",
+          "title": "150g",
+          "buttonLabel": "🌿 Paan 150g (₹149)",
+          "price": 149,
+          "sku": "paan-mukhwas-150g"
+        },
+        {
+          "id": "btn_size_paan_300g",
+          "title": "300g",
+          "buttonLabel": "🌿 Paan 300g (₹249)",
+          "price": 249,
+          "sku": "paan-mukhwas-300g"
+        },
+        {
+          "id": "btn_size_paan_500g",
+          "title": "500g",
+          "buttonLabel": "🌿 Paan 500g (₹399)",
+          "price": 399,
+          "sku": "paan-mukhwas-500g"
+        }
+      ]
+    },
+    {
+      "id": "seeds-fusion",
+      "title": "Seeds Fusion (Regular & Lime)",
+      "category": "Wholesome Seeds",
+      "type": "product",
+      "price": "₹149 (100g) / ₹249 (200g)",
+      "description": "6-seed powerhouse blend (white & black sesame, pumpkin, watermelon, sunflower, flax) lightly salted or zesty lime roasted.",
+      "requiresRefrigeration": false,
+      "checkoutUrl": "https://mintarabites.com/cart",
+      "variants": [
+        {
+          "id": "btn_size_seeds_100g",
+          "title": "100g",
+          "buttonLabel": "🌱 Seeds 100g (₹149)",
+          "price": 149,
+          "sku": "seeds-fusion-regular-100g"
+        },
+        {
+          "id": "btn_size_seeds_200g",
+          "title": "200g",
+          "buttonLabel": "🌱 Seeds 200g (₹249)",
+          "price": 249,
+          "sku": "seeds-fusion-regular-200g"
+        }
+      ]
+    },
+    {
+      "id": "coconut-crunch",
+      "title": "Coconut Crunch",
+      "category": "Sweet Digestive",
+      "type": "product",
+      "price": "₹149 (100g) / ₹249 (200g)",
+      "description": "Toasted coconut flakes, rich chocolate-coated sesame, and crisp roasted dhanadal for a guilt-free sweet crunch.",
+      "requiresRefrigeration": false,
+      "checkoutUrl": "https://mintarabites.com/cart",
+      "variants": [
+        {
+          "id": "btn_size_coconut_100g",
+          "title": "100g",
+          "buttonLabel": "🥥 Coconut 100g (₹149)",
+          "price": 149,
+          "sku": "coconut-crunch-100g"
+        },
+        {
+          "id": "btn_size_coconut_200g",
+          "title": "200g",
+          "buttonLabel": "🥥 Coconut 200g (₹249)",
+          "price": 249,
+          "sku": "coconut-crunch-200g"
+        }
+      ]
+    },
+    {
+      "id": "mintara-trio",
+      "title": "Mintara Trio Pack",
+      "category": "Combos & Gift Packs",
+      "type": "product",
+      "price": "₹399 (350g)",
+      "description": "Signature collection featuring Paan Mukhwas (150g), Seeds Fusion (100g), and Coconut Crunch (100g) in an airtight gift box.",
+      "requiresRefrigeration": true,
+      "checkoutUrl": "https://mintarabites.com/cart",
+      "variants": [
+        {
+          "id": "btn_size_trio_350g",
+          "title": "350g",
+          "buttonLabel": "🎁 Trio Pack 350g (₹399)",
+          "price": 399,
+          "sku": "combo-trio-350g"
+        }
+      ]
+    },
+    {
+      "id": "family-feast",
+      "title": "Family Feast Pack",
+      "category": "Combos & Gift Packs",
+      "type": "product",
+      "price": "₹699 (700g)",
+      "description": "Large sharing pack (300g Paan + 200g Seeds + 200g Coconut) with FREE Pan-India express delivery.",
+      "requiresRefrigeration": true,
+      "checkoutUrl": "https://mintarabites.com/cart",
+      "variants": [
+        {
+          "id": "btn_size_family_700g",
+          "title": "700g",
+          "buttonLabel": "🎉 Family Pack 700g (₹699)",
+          "price": 699,
+          "sku": "combo-family-700g"
+        }
+      ]
+    }
+  ],
   "products": [
     {
       "title": "Artisanal Paan Mukhwas",
@@ -98,7 +364,7 @@
     },
     {
       "question": "What is the delivery charge?",
-      "answer": "Orders ₹699 and above receive FREE express delivery across India! You can also use promo code MINFREE for free delivery."
+      "answer": "Orders ₹699 and above receive FREE express delivery across India!"
     },
     {
       "question": "Where can I follow Mintara Bites on social media?",

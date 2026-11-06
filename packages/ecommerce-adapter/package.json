@@ -10,7 +10,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@whatsapp-platform/config": "workspace:*",
     "@whatsapp-platform/database": "workspace:*",
     "@whatsapp-platform/shared": "workspace:*"
   },

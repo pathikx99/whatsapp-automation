@@ -72,13 +72,13 @@ All platform state is isolated into four dedicated schemas within the platform d
 
 A critical architectural constraint is protecting the remote ecommerce production database:
 
-| Dimension        | Local Supabase Database                        | Remote Ecommerce Supabase                      |
-| :--------------- | :--------------------------------------------- | :--------------------------------------------- |
-| **Role**         | Platform State & Schema Ownership              | External Read-Only Datasource                  |
-| **Permissions**  | Full DDL + DML                                 | Strictly Read-Only (SELECT queries)            |
-| **Migrations**   | Executed via Supabase CLI (`supabase db ...`)  | **NEVER** run migrations against this database |
-| **Client Pool**  | `getLocalDbPool()`                             | `getEcommerceReadOnlyPool()`                   |
-| **Safety Guard** | Verified local host (`localhost`, `127.0.0.1`) | Guarded by `assertReadOnlySql()`               |
+| Dimension         | Local Supabase Database                        | Remote Ecommerce Supabase                      |
+| :---------------- | :--------------------------------------------- | :--------------------------------------------- |
+| **Role**          | Platform State & Schema Ownership              | External Read-Only Datasource                  |
+| **Permissions**   | Full DDL + DML                                 | Strictly Read-Only (SELECT queries)            |
+| **Migrations**    | Executed via Supabase CLI (`supabase db ...`)  | **NEVER** run migrations against this database |
+| **Client Access** | `createPlatformSupabaseClient()`               | `createEcommerceSupabaseClient()` (HTTPS REST) |
+| **Safety Guard**  | Verified local host (`localhost`, `127.0.0.1`) | Guarded by `assertReadOnlySql()`               |
 
 ### Safety Guardrails
 
@@ -114,3 +114,37 @@ The platform consists of four independently deployable runtimes:
 - **Environment Validation**: Validated at startup with Zod. Missing configuration aborts startup with safe diagnostics.
 - **Secret Redaction**: Pino structured logging configures deep redactions for `authorization`, `cookie`, `token`, `secret`, `password`, and `apiKey`.
 - **Credential Separation**: The service-role key is never used for general read operations or client-facing responses.
+
+---
+
+## 6. High-ROI Conversions & WhatsApp Commerce
+
+- **Native WhatsApp Catalog & In-Chat Checkout**:
+  - Utilizes Meta's interactive catalog messages (`product` and `product_list`).
+  - Supports pack size selection (150g, 300g, 500g) and generates prefilled checkout URLs directly within WhatsApp chat.
+- **Smart Replenishment Prediction Engine**:
+  - Predicts customer consumption velocity (~12g/day; 300g pack lasts ~3-4 weeks).
+  - Automatically schedules a day-25 replenishment reminder on `order.created`/`order.paid` with a 1-click reorder button (`btn_reorder_favorites`).
+- **Dynamic Abandoned Cart Recovery**:
+  - Ingests `cart.abandoned` webhooks; if cart age exceeds 4 hours, dynamically generates single-use personalized coupons (`TREAT10-<phone_suffix>`) expiring in 24 hours.
+- **Click-to-WhatsApp Ads (CTWA) & Attribution Tracking**:
+  - Captures inbound referral objects (`source_id`, `ad_id`, `headline`) into `integration.ad_referrals`.
+  - Triggers headline-specific welcome flows and exposes `GET /api/analytics/roas` for Return on Ad Spend computation.
+
+---
+
+## 7. Post-Purchase Journey & Courier Integrations
+
+- **Proactive `order.delivered` Refrigeration Nudge**:
+  - Detects delivered orders containing cold-storage items (like Artisanal Paan Mukhwas containing natural rose gulkand).
+  - Immediately fires proactive refrigerated care instructions:
+    `"Your Mintara Paan Mukhwas has arrived! 🌿 Please pop it into the refrigerator right away to preserve its crisp texture and authentic rose aroma."`
+- **Proactive NDR (Non-Delivery Report) Resolution**:
+  - Ingests logistics webhooks (`/webhooks/logistics` and `/webhooks/courier`) from Shiprocket, Delhivery, Bluedart, etc.
+  - On delivery failure (`UNDELIVERED`, `NDR`, `DELIVERY_FAILED`), dispatches proactive WhatsApp interactive alerts asking the customer for landmarks or updated delivery instructions before Return to Origin (RTO).
+  - Customer landmark responses are persisted in `ndr_instructions` and confirmed immediately.
+- **Automated CSAT / Review Collection**:
+  - Schedules an automated rating prompt 3 days post-delivery (1–5 stars).
+  - **5 Stars**: Records review and shares direct Google Review (`https://g.page/r/mintarabites/review`) and Instagram (`https://instagram.com/mintarabites`) links.
+  - **< 4 Stars**: Apologizes, requests feedback, and automatically creates an escalation ticket in `support_tickets` for human resolution.
+  - **4 Stars**: Thanks the customer warmly with review links.

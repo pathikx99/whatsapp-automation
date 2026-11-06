@@ -8,7 +8,13 @@ try {
   // Ignore if unsupported in environment
 }
 
-export type WhatsAppMessageType = 'text' | 'template' | 'interactive' | 'media';
+export type WhatsAppMessageType =
+  | 'text'
+  | 'template'
+  | 'interactive'
+  | 'media'
+  | 'product'
+  | 'product_list';
 
 export interface WhatsAppButtonAction {
   id: string;
@@ -38,8 +44,36 @@ export interface WhatsAppInteractiveMessage {
   footer?: string;
 }
 
+export interface WhatsAppProductMessage {
+  type: 'product';
+  to: string;
+  catalogId: string;
+  productRetailerId: string;
+  body?: string;
+  footer?: string;
+}
+
+export interface WhatsAppProductListSection {
+  title: string;
+  productRetailerIds: string[];
+}
+
+export interface WhatsAppProductListMessage {
+  type: 'product_list';
+  to: string;
+  catalogId: string;
+  headerText: string;
+  body: string;
+  sections: WhatsAppProductListSection[];
+  footer?: string;
+}
+
 export type OutboundWhatsAppMessage =
-  WhatsAppTextMessage | WhatsAppTemplateMessage | WhatsAppInteractiveMessage;
+  | WhatsAppTextMessage
+  | WhatsAppTemplateMessage
+  | WhatsAppInteractiveMessage
+  | WhatsAppProductMessage
+  | WhatsAppProductListMessage;
 
 export interface WhatsAppSendResult {
   messageId: string;
@@ -55,6 +89,21 @@ export interface WhatsAppProvider {
     to: string,
     body: string,
     buttons: WhatsAppButtonAction[],
+    footer?: string,
+  ): Promise<WhatsAppSendResult>;
+  sendProduct(
+    to: string,
+    catalogId: string,
+    productRetailerId: string,
+    body?: string,
+    footer?: string,
+  ): Promise<WhatsAppSendResult>;
+  sendProductList(
+    to: string,
+    catalogId: string,
+    headerText: string,
+    body: string,
+    sections: WhatsAppProductListSection[],
     footer?: string,
   ): Promise<WhatsAppSendResult>;
   verifyWebhook(mode: string, token: string): boolean;
@@ -136,6 +185,37 @@ export function createWhatsAppProvider(): WhatsAppProvider {
                   ]
                 : undefined,
           };
+        } else if (message.type === 'product') {
+          payload.type = 'interactive';
+          payload.interactive = {
+            type: 'product',
+            body: message.body ? { text: message.body } : undefined,
+            footer: message.footer ? { text: message.footer } : undefined,
+            action: {
+              catalog_id: message.catalogId,
+              product_retailer_id: message.productRetailerId,
+            },
+          };
+        } else if (message.type === 'product_list') {
+          payload.type = 'interactive';
+          payload.interactive = {
+            type: 'product_list',
+            header: {
+              type: 'text',
+              text: message.headerText,
+            },
+            body: { text: message.body },
+            footer: message.footer ? { text: message.footer } : undefined,
+            action: {
+              catalog_id: message.catalogId,
+              sections: message.sections.map((section) => ({
+                title: section.title,
+                product_items: section.productRetailerIds.map((retailerId) => ({
+                  product_retailer_id: retailerId,
+                })),
+              })),
+            },
+          };
         }
 
         const endpoint = `https://graph.facebook.com/v26.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
@@ -184,6 +264,42 @@ export function createWhatsAppProvider(): WhatsAppProvider {
         to,
         body,
         buttons,
+        footer,
+      });
+    },
+
+    async sendProduct(
+      to: string,
+      catalogId: string,
+      productRetailerId: string,
+      body?: string,
+      footer?: string,
+    ): Promise<WhatsAppSendResult> {
+      return this.sendMessage({
+        type: 'product',
+        to,
+        catalogId,
+        productRetailerId,
+        body,
+        footer,
+      });
+    },
+
+    async sendProductList(
+      to: string,
+      catalogId: string,
+      headerText: string,
+      body: string,
+      sections: WhatsAppProductListSection[],
+      footer?: string,
+    ): Promise<WhatsAppSendResult> {
+      return this.sendMessage({
+        type: 'product_list',
+        to,
+        catalogId,
+        headerText,
+        body,
+        sections,
         footer,
       });
     },

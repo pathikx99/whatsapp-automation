@@ -495,13 +495,44 @@ CREATE TABLE IF NOT EXISTS public.worker_jobs (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4.7 Cross-Schema Views for Domain Isolation
+-- 4.7 Ad Referrals & Click-To-WhatsApp (CTWA) Attribution Tracking
+CREATE TABLE IF NOT EXISTS integration.ad_referrals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone_number VARCHAR(32) NOT NULL,
+  source_id VARCHAR(128),
+  ad_id VARCHAR(128),
+  headline TEXT,
+  body TEXT,
+  source_type VARCHAR(64) DEFAULT 'ad',
+  source_url TEXT,
+  media_type VARCHAR(32),
+  image_url TEXT,
+  video_url TEXT,
+  ctwa_clid TEXT,
+  customer_id UUID,
+  raw_referral JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 4.8 Logistics NDR (Non-Delivery Report) Instructions
+CREATE TABLE IF NOT EXISTS public.ndr_instructions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone_number VARCHAR(32) NOT NULL,
+  order_number VARCHAR(64),
+  instructions TEXT NOT NULL,
+  courier VARCHAR(64) DEFAULT 'courier',
+  status VARCHAR(32) NOT NULL DEFAULT 'submitted',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 4.8 Cross-Schema Views for Domain Isolation
 CREATE OR REPLACE VIEW support.conversations AS SELECT * FROM public.support_conversations;
 CREATE OR REPLACE VIEW support.messages AS SELECT * FROM public.support_messages;
 CREATE OR REPLACE VIEW support.tickets AS SELECT * FROM public.support_tickets;
 CREATE OR REPLACE VIEW marketing.dispatches AS SELECT * FROM public.marketing_dispatches;
 CREATE OR REPLACE VIEW messaging.receipts AS SELECT * FROM public.messaging_receipts;
 CREATE OR REPLACE VIEW integration.worker_jobs AS SELECT * FROM public.worker_jobs;
+CREATE OR REPLACE VIEW public.ad_referrals AS SELECT * FROM integration.ad_referrals;
 
 -- ------------------------------------------------------------------------------
 -- 5. PERFORMANCE INDEXES
@@ -1298,3 +1329,4 @@ GRANT ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA public TO service_role;
 -- 9. RELOAD POSTGREST SCHEMA CACHE
 -- ------------------------------------------------------------------------------
 NOTIFY pgrst, 'reload schema';
+

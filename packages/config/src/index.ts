@@ -141,6 +141,7 @@ export const envSchema = z.object({
   WHATSAPP_PROVIDER: z.enum(['cloud_api', 'twilio', 'mock']).default('mock'),
   WHATSAPP_API_KEY: z.string().optional(),
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  WHATSAPP_CATALOG_ID: z.string().optional(),
   WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
   WHATSAPP_APP_SECRET: z.string().optional(),
 
@@ -227,4 +228,3 @@ export function getPlatformSupabaseConfig(config: AppConfig = getConfig()): {
 }
 
 export * from './business-profile.js';
-

@@ -51,8 +51,100 @@ export interface PlatformWorkerJob {
   createdAt: string;
 }
 
+export interface AdReferralData {
+  phoneNumber: string;
+  sourceId?: string;
+  adId?: string;
+  headline?: string;
+  body?: string;
+  sourceType?: string;
+  sourceUrl?: string;
+  mediaType?: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  ctwaClid?: string;
+  customerId?: string;
+  rawReferral?: Record<string, unknown>;
+}
+
+export interface AdReferralRecord extends AdReferralData {
+  id: string;
+  createdAt: string;
+}
+
+export interface ROASReport {
+  adId: string;
+  leadsCount: number;
+  ordersCount: number;
+  totalRevenue: number;
+  adSpend: number;
+  roas: number;
+  conversionRate: number;
+}
+
+export interface PromoCodeRecord {
+  id: string;
+  code: string;
+  type: 'percent' | 'flat' | 'free_delivery';
+  value: number;
+  minSubtotal?: number;
+  maxDiscount?: number;
+  expiresAt?: string;
+  usageLimit?: number;
+  used: number;
+  createdAt: string;
+}
+
+export type ReviewPlatform =
+  | 'website'
+  | 'google'
+  | 'whatsapp'
+  | 'amazon'
+  | 'trustpilot'
+  | 'other';
+
+export interface CustomerReviewRecord {
+  id: string;
+  platform?: ReviewPlatform;
+  customerPhone?: string;
+  customerName?: string;
+  orderNumber?: string;
+  externalReviewId?: string;
+  rating: number;
+  title?: string;
+  comment?: string;
+  status: 'submitted' | 'escalated' | 'resolved' | 'published';
+  verified?: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface UnifiedReviewSummary {
+  averageRating: number;
+  totalReviews: number;
+  platformBreakdown: Record<
+    string,
+    { count: number; averageRating: number }
+  >;
+  ratingDistribution: Record<1 | 2 | 3 | 4 | 5, number>;
+}
+
+export interface NdrInstructionRecord {
+  id: string;
+  customerPhone: string;
+  orderNumber?: string;
+  instructions: string;
+  courier?: string;
+  status: 'submitted' | 'forwarded_to_courier' | 'resolved';
+  createdAt: string;
+}
+
 export class PlatformRepository {
   private client: SupabaseClient;
+  private adReferralsCache: AdReferralRecord[] = [];
+  private promoCodesCache: Map<string, PromoCodeRecord> = new Map();
+  private customerReviewsCache: CustomerReviewRecord[] = [];
+  private ndrInstructionsCache: NdrInstructionRecord[] = [];
 
   constructor(customClient?: SupabaseClient) {
     this.client = customClient || createLocalSupabaseClient();
@@ -462,6 +554,37 @@ export class PlatformRepository {
     }));
   }
 
+  public async fetchScheduledJobs(jobType?: string, limit = 50): Promise<PlatformWorkerJob[]> {
+    let query = this.client
+      .from('worker_jobs')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (jobType) {
+      query = query.eq('job_type', jobType);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      logger.error({ error }, 'Failed fetching scheduled worker_jobs');
+      throw new Error(`Database error fetching scheduled jobs: ${error.message}`);
+    }
+
+    return (data || []).map((j: any) => ({
+      id: j.id,
+      jobType: j.job_type,
+      payload: j.payload,
+      status: j.status,
+      retries: j.retries,
+      maxRetries: j.max_retries,
+      error: j.error,
+      scheduledFor: j.scheduled_for,
+      createdAt: j.created_at,
+    }));
+  }
+
   public async updateJobStatus(
     jobId: string,
     status: 'pending' | 'processing' | 'completed' | 'failed',
@@ -528,6 +651,603 @@ export class PlatformRepository {
       totalDispatches,
       receipts: { sent, delivered, read, failed },
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 8. CLICK-TO-WHATSAPP (CTWA) AD REFERRALS & ROAS ATTRIBUTION
+  // ---------------------------------------------------------------------------
+  public async recordAdReferral(data: AdReferralData): Promise<AdReferralRecord> {
+    const cleanPhone = data.phoneNumber.replace(/\D/g, '');
+    const now = new Date().toISOString();
+
+    const record: AdReferralRecord = {
+      id: `ref_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      phoneNumber: cleanPhone,
+      sourceId: data.sourceId,
+      adId: data.adId || data.sourceId,
+      headline: data.headline,
+      body: data.body,
+      sourceType: data.sourceType || 'ad',
+      sourceUrl: data.sourceUrl,
+      mediaType: data.mediaType,
+      imageUrl: data.imageUrl,
+      videoUrl: data.videoUrl,
+      ctwaClid: data.ctwaClid,
+      customerId: data.customerId,
+      rawReferral: data.rawReferral || {},
+      createdAt: now,
+    };
+
+    // Store in-memory cache for immediate availability
+    this.adReferralsCache.unshift(record);
+
+    const payload = {
+      phone_number: cleanPhone,
+      source_id: data.sourceId || null,
+      ad_id: data.adId || data.sourceId || null,
+      headline: data.headline || null,
+      body: data.body || null,
+      source_type: data.sourceType || 'ad',
+      source_url: data.sourceUrl || null,
+      media_type: data.mediaType || null,
+      image_url: data.imageUrl || null,
+      video_url: data.videoUrl || null,
+      ctwa_clid: data.ctwaClid || null,
+      customer_id: data.customerId || null,
+      raw_referral: data.rawReferral || {},
+      created_at: now,
+    };
+
+    try {
+      let insertResult = await this.client.from('ad_referrals').insert(payload).select().single();
+
+      if (insertResult.error) {
+        insertResult = await this.client
+          .schema('integration' as any)
+          .from('ad_referrals')
+          .insert(payload)
+          .select()
+          .single();
+      }
+
+      if (insertResult.data) {
+        record.id = insertResult.data.id;
+        record.createdAt = insertResult.data.created_at;
+      }
+    } catch (err) {
+      logger.debug({ err, phoneNumber: cleanPhone }, 'Could not persist ad referral to database, using cache');
+    }
+
+    return record;
+  }
+
+  public async getAdReferrals(phoneNumber?: string, adId?: string): Promise<AdReferralRecord[]> {
+    const clean = phoneNumber ? phoneNumber.replace(/\D/g, '') : undefined;
+
+    // Filter from local cache
+    const cachedMatches = this.adReferralsCache.filter((r) => {
+      if (clean && r.phoneNumber !== clean) return false;
+      if (adId && r.adId !== adId && r.sourceId !== adId) return false;
+      return true;
+    });
+
+    try {
+      let query = this.client.from('ad_referrals').select('*').order('created_at', { ascending: false });
+
+      if (clean) query = query.eq('phone_number', clean);
+      if (adId) query = query.or(`ad_id.eq.${adId},source_id.eq.${adId}`);
+
+      const { data, error } = await query;
+      if (!error && data && data.length > 0) {
+        const dbRecords: AdReferralRecord[] = data.map((r: any) => ({
+          id: r.id,
+          phoneNumber: r.phone_number,
+          sourceId: r.source_id,
+          adId: r.ad_id,
+          headline: r.headline,
+          body: r.body,
+          sourceType: r.source_type,
+          sourceUrl: r.source_url,
+          mediaType: r.media_type,
+          imageUrl: r.image_url,
+          videoUrl: r.video_url,
+          ctwaClid: r.ctwa_clid,
+          customerId: r.customer_id,
+          rawReferral: r.raw_referral,
+          createdAt: r.created_at,
+        }));
+
+        // Merge DB records and cached records uniquely by id
+        const combined: AdReferralRecord[] = [...dbRecords];
+        for (const c of cachedMatches) {
+          if (!combined.some((item) => item.id === c.id)) {
+            combined.push(c);
+          }
+        }
+        return combined;
+      }
+    } catch (err) {
+      logger.debug({ err }, 'Database query for ad_referrals failed, returning cached');
+    }
+
+    return cachedMatches;
+  }
+
+  public async calculateROAS(adId: string, adSpend = 0): Promise<ROASReport> {
+    const referrals = await this.getAdReferrals(undefined, adId === 'all' ? undefined : adId);
+    const uniquePhones = Array.from(new Set(referrals.map((r) => r.phoneNumber).filter(Boolean)));
+    const leadsCount = uniquePhones.length;
+
+    if (leadsCount === 0) {
+      return {
+        adId,
+        leadsCount: 0,
+        ordersCount: 0,
+        totalRevenue: 0,
+        adSpend,
+        roas: 0,
+        conversionRate: 0,
+      };
+    }
+
+    // Query orders that match the leads by phone or attribution
+    let ordersCount = 0;
+    let totalRevenue = 0;
+
+    try {
+      const phoneFilter = uniquePhones
+        .map((p) => {
+          const p10 = p.length > 10 && p.startsWith('91') ? p.slice(2) : p;
+          return `shipping_phone.eq.${p},shipping_phone.eq.${p10}`;
+        })
+        .join(',');
+
+      const { data: orders, error: ordersError } = await this.client
+        .from('orders')
+        .select('id, total_amount, status, payment_status, shipping_phone, attribution_metadata')
+        .or(phoneFilter);
+
+      if (!ordersError && orders) {
+        const validOrders = orders.filter(
+          (o: any) => o.status !== 'CANCELLED' && o.payment_status !== 'FAILED',
+        );
+        ordersCount = validOrders.length;
+        totalRevenue = validOrders.reduce((sum: number, o: any) => sum + Number(o.total_amount || 0), 0);
+      }
+    } catch {
+      // Offline fallback
+    }
+
+    const roas = adSpend > 0 ? Number((totalRevenue / adSpend).toFixed(2)) : totalRevenue > 0 ? Infinity : 0;
+    const conversionRate = leadsCount > 0 ? Number(((ordersCount / leadsCount) * 100).toFixed(2)) : 0;
+
+    return {
+      adId,
+      leadsCount,
+      ordersCount,
+      totalRevenue,
+      adSpend,
+      roas,
+      conversionRate,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 9. DYNAMIC PROMO CODES
+  // ---------------------------------------------------------------------------
+  public async createPromoCode(params: {
+    code: string;
+    type?: 'percent' | 'flat' | 'free_delivery';
+    value?: number;
+    minSubtotal?: number;
+    maxDiscount?: number;
+    expiresAt?: string;
+    usageLimit?: number;
+  }): Promise<PromoCodeRecord> {
+    const cleanCode = params.code.trim().toUpperCase();
+    const now = new Date().toISOString();
+
+    const record: PromoCodeRecord = {
+      id: `promo_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      code: cleanCode,
+      type: params.type || 'percent',
+      value: params.value ?? 10,
+      minSubtotal: params.minSubtotal,
+      maxDiscount: params.maxDiscount,
+      expiresAt: params.expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      usageLimit: params.usageLimit ?? 1,
+      used: 0,
+      createdAt: now,
+    };
+
+    // Store in-memory cache
+    this.promoCodesCache.set(cleanCode, record);
+
+    const payload = {
+      code: cleanCode,
+      type: record.type,
+      value: record.value,
+      min_subtotal: record.minSubtotal || null,
+      max_discount: record.maxDiscount || null,
+      expires_at: record.expiresAt,
+      usage_limit: record.usageLimit,
+      used: 0,
+      created_at: now,
+    };
+
+    try {
+      const { data, error } = await this.client
+        .from('promo_codes')
+        .upsert(payload, { onConflict: 'code' })
+        .select()
+        .single();
+
+      if (!error && data) {
+        record.id = data.id;
+        record.createdAt = data.created_at;
+      }
+    } catch (err) {
+      logger.debug({ err, code: cleanCode }, 'Could not persist promo code to database, using cache');
+    }
+
+    return record;
+  }
+
+  public async getPromoCode(code: string): Promise<PromoCodeRecord | null> {
+    const cleanCode = code.trim().toUpperCase();
+
+    try {
+      const { data, error } = await this.client
+        .from('promo_codes')
+        .select('*')
+        .eq('code', cleanCode)
+        .maybeSingle();
+
+      if (!error && data) {
+        return {
+          id: data.id,
+          code: data.code,
+          type: data.type,
+          value: Number(data.value),
+          minSubtotal: data.min_subtotal ? Number(data.min_subtotal) : undefined,
+          maxDiscount: data.max_discount ? Number(data.max_discount) : undefined,
+          expiresAt: data.expires_at,
+          usageLimit: data.usage_limit,
+          used: data.used || 0,
+          createdAt: data.created_at,
+        };
+      }
+    } catch {
+      // Fallback to cache below
+    }
+
+    return this.promoCodesCache.get(cleanCode) || null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // 10. CUSTOMER CSAT & REVIEWS
+  // ---------------------------------------------------------------------------
+  public async recordCustomerReview(params: {
+    customerPhone: string;
+    customerName?: string;
+    orderNumber?: string;
+    rating: number;
+    comment?: string;
+    status?: 'submitted' | 'escalated' | 'resolved';
+  }): Promise<CustomerReviewRecord> {
+    const cleanPhone = params.customerPhone.replace(/\D/g, '');
+    const now = new Date().toISOString();
+    const clampedRating = Math.max(1, Math.min(5, Math.round(params.rating)));
+
+    const record: CustomerReviewRecord = {
+      id: `rev_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      platform: 'whatsapp',
+      customerPhone: cleanPhone,
+      customerName: params.customerName || 'Customer',
+      orderNumber: params.orderNumber,
+      rating: clampedRating,
+      comment: params.comment,
+      status: params.status || (clampedRating < 4 ? 'escalated' : 'submitted'),
+      createdAt: now,
+    };
+
+    this.customerReviewsCache.unshift(record);
+
+    try {
+      const { data, error } = await this.client
+        .from('reviews')
+        .insert({
+          product_id: 'general',
+          customer_name: record.customerName,
+          rating: record.rating,
+          comment: record.comment || `WhatsApp Rating: ${record.rating} Stars`,
+          is_verified: true,
+          created_at: now,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        record.id = data.id;
+      }
+    } catch (err) {
+      logger.debug({ err, cleanPhone }, 'Could not persist review to DB, using cache');
+    }
+
+    return record;
+  }
+
+  public async getCustomerReviews(customerPhone?: string): Promise<CustomerReviewRecord[]> {
+    if (customerPhone) {
+      const cleanPhone = customerPhone.replace(/\D/g, '');
+      return this.customerReviewsCache.filter((r) => r.customerPhone === cleanPhone);
+    }
+    return [...this.customerReviewsCache];
+  }
+
+  public async upsertPlatformReview(params: {
+    id?: string;
+    externalReviewId?: string;
+    platform: ReviewPlatform;
+    rating: number;
+    customerName?: string;
+    customerPhone?: string;
+    orderNumber?: string;
+    title?: string;
+    comment?: string;
+    status?: 'submitted' | 'escalated' | 'resolved' | 'published';
+    verified?: boolean;
+    createdAt?: string;
+  }): Promise<CustomerReviewRecord> {
+    const cleanPhone = params.customerPhone ? params.customerPhone.replace(/\D/g, '') : undefined;
+    const now = new Date().toISOString();
+    const clampedRating = Math.max(1, Math.min(5, Math.round(params.rating)));
+
+    const existingIndex = this.customerReviewsCache.findIndex((r) => {
+      if (params.id && r.id === params.id) return true;
+      if (params.externalReviewId && r.externalReviewId === params.externalReviewId) return true;
+      return false;
+    });
+
+    if (existingIndex >= 0) {
+      const existing = this.customerReviewsCache[existingIndex]!;
+      existing.rating = clampedRating;
+      if (params.comment !== undefined) existing.comment = params.comment;
+      if (params.title !== undefined) existing.title = params.title;
+      if (params.customerName !== undefined) existing.customerName = params.customerName;
+      if (params.status !== undefined) existing.status = params.status;
+      existing.updatedAt = now;
+      return existing;
+    }
+
+    const record: CustomerReviewRecord = {
+      id: params.id || `rev_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      platform: params.platform,
+      externalReviewId: params.externalReviewId,
+      customerPhone: cleanPhone,
+      customerName: params.customerName || 'Customer',
+      orderNumber: params.orderNumber,
+      rating: clampedRating,
+      title: params.title,
+      comment: params.comment,
+      status: params.status || 'published',
+      verified: params.verified ?? true,
+      createdAt: params.createdAt || now,
+    };
+
+    this.customerReviewsCache.unshift(record);
+
+    try {
+      await this.client.from('reviews').insert({
+        product_id: 'general',
+        customer_name: record.customerName,
+        rating: record.rating,
+        title: record.title || null,
+        comment: record.comment || `${params.platform} Review: ${record.rating} Stars`,
+        is_verified: record.verified,
+        created_at: record.createdAt,
+      });
+    } catch (err) {
+      logger.debug({ err }, 'Could not persist external review to DB, using cache');
+    }
+
+    return record;
+  }
+
+  public async batchSyncReviews(
+    reviews: Array<{
+      id?: string;
+      externalReviewId?: string;
+      platform: ReviewPlatform;
+      rating: number;
+      customerName?: string;
+      customerPhone?: string;
+      orderNumber?: string;
+      title?: string;
+      comment?: string;
+      status?: 'submitted' | 'escalated' | 'resolved' | 'published';
+      verified?: boolean;
+      createdAt?: string;
+    }>,
+  ): Promise<{ synced: number; reviews: CustomerReviewRecord[] }> {
+    const results: CustomerReviewRecord[] = [];
+    for (const item of reviews) {
+      const synced = await this.upsertPlatformReview(item);
+      results.push(synced);
+    }
+    return { synced: results.length, reviews: results };
+  }
+
+  public async syncWebsiteReviews(
+    websiteReviews: Array<{
+      id: string;
+      productId?: string;
+      customerName: string;
+      rating: number;
+      title?: string;
+      comment: string;
+      isVerified?: boolean;
+      createdAt?: string;
+    }>,
+  ): Promise<{ synced: number; reviews: CustomerReviewRecord[] }> {
+    const formatted = websiteReviews.map((r) => ({
+      id: r.id,
+      externalReviewId: `web_${r.id}`,
+      platform: 'website' as const,
+      customerName: r.customerName,
+      rating: r.rating,
+      title: r.title,
+      comment: r.comment,
+      verified: r.isVerified ?? true,
+      status: r.rating < 4 ? ('escalated' as const) : ('published' as const),
+      createdAt: r.createdAt,
+    }));
+    return await this.batchSyncReviews(formatted);
+  }
+
+  public async updateReviewRating(
+    reviewId: string,
+    newRating: number,
+    comment?: string,
+  ): Promise<CustomerReviewRecord | null> {
+    const clampedRating = Math.max(1, Math.min(5, Math.round(newRating)));
+    const now = new Date().toISOString();
+
+    const existing = this.customerReviewsCache.find(
+      (r) => r.id === reviewId || r.externalReviewId === reviewId,
+    );
+
+    if (existing) {
+      existing.rating = clampedRating;
+      if (comment !== undefined) existing.comment = comment;
+      existing.updatedAt = now;
+      if (clampedRating < 4) existing.status = 'escalated';
+    }
+
+    try {
+      await this.client
+        .from('reviews')
+        .update({
+          rating: clampedRating,
+          ...(comment !== undefined ? { comment } : {}),
+        })
+        .eq('id', reviewId);
+    } catch (err) {
+      logger.debug({ err, reviewId }, 'Could not update review in DB, cache updated');
+    }
+
+    return existing || null;
+  }
+
+  public async getUnifiedReviewSummary(): Promise<UnifiedReviewSummary> {
+    const reviews = await this.getCustomerReviews();
+
+    const distribution: Record<1 | 2 | 3 | 4 | 5, number> = {
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0,
+    };
+
+    const platformBreakdown: Record<
+      string,
+      { count: number; totalScore: number; averageRating: number }
+    > = {};
+
+    let totalScore = 0;
+    for (const r of reviews) {
+      const rating = Math.max(1, Math.min(5, Math.round(r.rating))) as 1 | 2 | 3 | 4 | 5;
+      distribution[rating]++;
+      totalScore += rating;
+
+      const p = r.platform || 'whatsapp';
+      if (!platformBreakdown[p]) {
+        platformBreakdown[p] = { count: 0, totalScore: 0, averageRating: 0 };
+      }
+      platformBreakdown[p]!.count++;
+      platformBreakdown[p]!.totalScore += rating;
+    }
+
+    const totalReviews = reviews.length;
+    const averageRating = totalReviews > 0 ? Number((totalScore / totalReviews).toFixed(1)) : 5.0;
+
+    const formattedBreakdown: Record<string, { count: number; averageRating: number }> = {};
+    for (const [p, stats] of Object.entries(platformBreakdown)) {
+      formattedBreakdown[p] = {
+        count: stats.count,
+        averageRating: stats.count > 0 ? Number((stats.totalScore / stats.count).toFixed(1)) : 5.0,
+      };
+    }
+
+    return {
+      averageRating,
+      totalReviews,
+      platformBreakdown: formattedBreakdown,
+      ratingDistribution: distribution,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 11. NDR (NON-DELIVERY REPORT) INSTRUCTIONS
+  // ---------------------------------------------------------------------------
+  public async recordNdrInstruction(params: {
+    customerPhone: string;
+    orderNumber?: string;
+    instructions: string;
+    courier?: string;
+    status?: 'submitted' | 'forwarded_to_courier' | 'resolved';
+  }): Promise<NdrInstructionRecord> {
+    const cleanPhone = params.customerPhone.replace(/\D/g, '');
+    const now = new Date().toISOString();
+
+    const record: NdrInstructionRecord = {
+      id: `ndr_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      customerPhone: cleanPhone,
+      orderNumber: params.orderNumber,
+      instructions: params.instructions.trim(),
+      courier: params.courier || 'courier',
+      status: params.status || 'submitted',
+      createdAt: now,
+    };
+
+    this.ndrInstructionsCache.unshift(record);
+
+    try {
+      const { data, error } = await this.client
+        .from('ndr_instructions')
+        .insert({
+          phone_number: cleanPhone,
+          order_number: record.orderNumber || null,
+          instructions: record.instructions,
+          courier: record.courier,
+          status: record.status,
+          created_at: now,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        record.id = data.id;
+      }
+    } catch (err) {
+      logger.debug({ err, cleanPhone }, 'Could not persist NDR instruction to DB, using cache');
+    }
+
+    return record;
+  }
+
+  public async getNdrInstructions(customerPhone?: string): Promise<NdrInstructionRecord[]> {
+    if (customerPhone) {
+      const cleanPhone = customerPhone.replace(/\D/g, '');
+      return this.ndrInstructionsCache.filter((n) => n.customerPhone === cleanPhone);
+    }
+    return [...this.ndrInstructionsCache];
+  }
+
+  public async getLatestNdrInstruction(customerPhone: string): Promise<NdrInstructionRecord | null> {
+    const list = await this.getNdrInstructions(customerPhone);
+    return list[0] || null;
   }
 }
 

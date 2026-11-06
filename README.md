@@ -118,7 +118,7 @@ The platform maintains four isolated schemas inside PostgreSQL:
 - **`support`**: AI conversation histories, ticket state, and context memory.
 - **`messaging`**: WhatsApp message dispatch queues and delivery status logs.
 
-Initial migration: `supabase/migrations/20261105000000_platform_schemas.sql`.
+Unified database setup: `supabase/schema.sql`. Clean reset script: `supabase/delete.sql`.
 
 ---
 

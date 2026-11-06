@@ -12,12 +12,10 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
     "@whatsapp-platform/config": "workspace:*",
-    "@whatsapp-platform/shared": "workspace:*",
-    "pg": "^8.13.3"
+    "@whatsapp-platform/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
-    "@types/pg": "^8.11.11",
     "typescript": "^5.7.3"
   }
 }

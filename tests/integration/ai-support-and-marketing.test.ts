@@ -2,6 +2,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { SupportOrchestrator } from '../../apps/support-engine/src/orchestrator.js';
 import { createEcommerceAdapter } from '../../packages/ecommerce-adapter/src/index.js';
 import { WhatsAppProvider } from '../../packages/whatsapp/src/index.js';
+import { AiProvider } from '../../packages/ai/src/index.js';
+import {
+  getBusinessProfile,
+  formatTemplate,
+  resetBusinessKnowledgeCache,
+  resetConfigCache,
+} from '../../packages/config/src/index.js';
+import { getPlatformRepository } from '../../packages/database/src/index.js';
 
 describe('AI Support and Delivery Status Guardrails', () => {
   const mockWhatsAppProvider: WhatsAppProvider = {
@@ -25,6 +33,7 @@ describe('AI Support and Delivery Status Guardrails', () => {
     whatsappProvider: mockWhatsAppProvider,
   });
   const adapter = createEcommerceAdapter();
+  const platformRepo = getPlatformRepository();
 
   it('should successfully read active products without modifying the database', async () => {
     const products = await adapter.getAllActiveProducts();
@@ -89,4 +98,92 @@ describe('AI Support and Delivery Status Guardrails', () => {
     expect(result.responseText).toBeDefined();
     expect(result.responseText?.length).toBeGreaterThan(10);
   }, 30000);
+
+  it('should verify Talk to Agent button is completely eliminated from business-profile.json', () => {
+    resetBusinessKnowledgeCache();
+    const profile = getBusinessProfile();
+    expect(profile.quickButtons.some((b) => b.id === 'btn_talk_human')).toBe(false);
+    expect(profile.quickButtons.length).toBeGreaterThanOrEqual(2);
+    expect(profile.quickButtons.map((b) => b.id)).toEqual(['btn_browse_catalog', 'btn_track_order']);
+  });
+
+  it('should verify formatTemplate safely replaces direct and nested variables', () => {
+    const template = 'Hi {{customerName}}! Order #{{orderNumber}} from {{brand.name}}. Total: ₹{{total}}';
+    const output = formatTemplate(template, {
+      customerName: 'Aarav',
+      orderNumber: 'MB-5001',
+      brand: { name: 'Mintara Bites' },
+      total: 699,
+    });
+    expect(output).toBe('Hi Aarav! Order #MB-5001 from Mintara Bites. Total: ₹699');
+
+    // Missing variables become empty string
+    const emptyOutput = formatTemplate('Item: {{missingItem}}', {});
+    expect(emptyOutput).toBe('Item: ');
+  });
+
+  it('should autonomously escalate when AI detects unresolvable customer issue', async () => {
+    process.env.ADMIN_ALERT_PHONE_NUMBER = '919999988888';
+    resetConfigCache();
+
+    const mockAi: AiProvider = {
+      isConfigured: () => true,
+      generateResponse: vi.fn().mockResolvedValue({
+        content:
+          '[ESCALATE: Customer received cracked Coconut Crunch jar with glass fragments, requires refund/replacement] Hello Priya! 🙏 I have flagged this for our human support team and transferred your order details and full conversation history.',
+        usage: { promptTokens: 50, completionTokens: 50, totalTokens: 100 },
+      }),
+    };
+
+    const autonomousOrchestrator = new SupportOrchestrator({
+      whatsappProvider: mockWhatsAppProvider,
+      aiProvider: mockAi,
+      platformRepository: platformRepo,
+    });
+
+    // Make sure customer is active first
+    await platformRepo.updateConversationStatus('919876543299', 'active');
+
+    const result = await autonomousOrchestrator.processMessage({
+      from: '919876543299',
+      messageId: 'test_auto_escalate_1',
+      body: 'My jar arrived broken and has glass inside!',
+      senderName: 'Priya',
+    });
+
+    // 1. Result action is escalated
+    expect(result.action).toBe('escalated');
+
+    // 2. Response text does NOT contain [ESCALATE: ...] tag
+    expect(result.responseText).not.toContain('[ESCALATE:');
+    expect(result.responseText).toContain('human support team');
+
+    // 3. Conversation is now marked escalated in database
+    const conv = await platformRepo.getOrCreateConversation('919876543299');
+    expect(conv.status).toBe('escalated');
+
+    // 4. Ticket was created in platform database with diagnostic reason
+    const tickets = await platformRepo.getEscalationTickets('open');
+    const matchingTicket = tickets.find((t) => t.phoneNumber === '919876543299');
+    expect(matchingTicket).toBeDefined();
+    expect(matchingTicket?.reason).toContain('cracked Coconut Crunch jar');
+
+    // 5. Admin WhatsApp received full context dossier alert with transcript
+    const calls = vi.mocked(mockWhatsAppProvider.sendMessage).mock.calls;
+    const adminAlert = calls.find(
+      (c) => c[0].to === '919999988888' && c[0].body?.includes('Support Escalation Alert'),
+    );
+    expect(adminAlert).toBeDefined();
+    expect(adminAlert?.[0].body).toContain('Customer received cracked Coconut Crunch jar');
+    expect(adminAlert?.[0].body).toContain('Conversation Transcript:');
+    expect(adminAlert?.[0].body).toContain('Order History:');
+    expect(adminAlert?.[0].body).toContain('wa.me/919876543299');
+
+    // 6. Customer received interactive message with only Resume Bot button (No Talk to Agent button)
+    const customerMessage = calls.find(
+      (c) => c[0].to === '919876543299' && c[0].type === 'interactive',
+    );
+    expect(customerMessage).toBeDefined();
+    expect(customerMessage?.[0].buttons?.map((b) => b.id)).toEqual(['btn_resume_bot']);
+  });
 });

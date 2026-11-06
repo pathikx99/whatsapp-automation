@@ -1,6 +1,7 @@
 # Business Knowledge: Mintara Bites
 
 ## About Mintara Bites
+
 Mintara Bites is a premium artisanal brand based in Surat, Gujarat, specializing in handcrafted Indian mouth fresheners and digestive treats.
 
 - **Tagline**: A Perfect Finish to Every Meal | 100% Supari & Tobacco Free Handcrafted Mukhwas
@@ -13,6 +14,7 @@ Mintara Bites is a premium artisanal brand based in Surat, Gujarat, specializing
 ---
 
 ## Core Brand Values & Guarantees
+
 1. **100% Supari & Areca Nut Free**: Zero areca nut or toxic chewing agents.
 2. **100% Tobacco Free**: Clean, wholesome treats for the entire family.
 3. **Freshly Packed on Order**: Made in small artisanal batches and packed right before courier dispatch for maximum aroma and crispness.
@@ -21,6 +23,7 @@ Mintara Bites is a premium artisanal brand based in Surat, Gujarat, specializing
 ---
 
 ## Signature Product Line
+
 1. **Artisanal Paan Mukhwas**
    - Traditional Calcuttia paan leaf infusion with cooling gulkand and crisp roasted seeds.
    - **Crucial Rule**: Keep refrigerated upon arrival to maintain crisp texture and rich rose aroma.
@@ -42,6 +45,7 @@ Mintara Bites is a premium artisanal brand based in Surat, Gujarat, specializing
 ---
 
 ## Policies & Support
+
 - **Delivery**: Express courier across India. Free delivery on orders over ₹699 or with promo code `MINFREE`.
 - **Order Tracking**: For live courier updates and tracking, instruct customers to check their dashboard at https://mintarabites.com/account/orders. Never attempt to guess or invent tracking numbers on WhatsApp.
 - **Wholesale & Corporate Gifting**: We provide custom trial boxes for cafes, restaurants, wedding hampers, and corporate gifting. Inquire via WhatsApp or contact@mintarabites.com.

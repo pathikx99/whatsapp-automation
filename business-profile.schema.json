@@ -1,0 +1,230 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BusinessProfile",
+  "type": "object",
+  "required": ["brand", "persona"],
+  "properties": {
+    "businessType": {
+      "type": "string",
+      "enum": ["ecommerce", "service", "hybrid"],
+      "default": "ecommerce"
+    },
+    "terminology": {
+      "type": "object",
+      "properties": {
+        "itemNoun": { "type": "string" },
+        "itemNounPlural": { "type": "string" },
+        "actionVerb": { "type": "string" },
+        "browseButtonTitle": { "type": "string" },
+        "trackingButtonTitle": { "type": "string" },
+        "reorderButtonTitle": { "type": "string" }
+      }
+    },
+    "brand": {
+      "type": "object",
+      "required": ["name", "location"],
+      "properties": {
+        "name": { "type": "string" },
+        "legalName": { "type": "string" },
+        "location": { "type": "string" },
+        "fssaiNumber": { "type": "string" },
+        "tagline": { "type": "string" },
+        "description": { "type": "string" },
+        "links": {
+          "type": "object",
+          "properties": {
+            "websiteUrl": { "type": "string", "format": "uri" },
+            "cartUrl": { "type": "string", "format": "uri" },
+            "bookingUrl": { "type": "string", "format": "uri" },
+            "orderTrackingUrl": { "type": "string", "format": "uri" },
+            "appointmentTrackingUrl": { "type": "string", "format": "uri" },
+            "instagram": { "type": "string" },
+            "instagramUrl": { "type": "string", "format": "uri" },
+            "googleReviewUrl": { "type": "string", "format": "uri" },
+            "supportEmail": { "type": "string", "format": "email" },
+            "supportPhone": { "type": "string" }
+          }
+        }
+      }
+    },
+    "persona": {
+      "type": "object",
+      "properties": {
+        "role": { "type": "string" },
+        "tone": { "type": "string" },
+        "rules": { "type": "array", "items": { "type": "string" } },
+        "escalationCriteria": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "brandHighlights": { "type": "array", "items": { "type": "string" } },
+    "knowledge": {
+      "type": "object",
+      "properties": {
+        "values": { "type": "array", "items": { "type": "string" } },
+        "policies": { "type": "object", "additionalProperties": { "type": "string" } },
+        "customMarkdown": { "type": "string" }
+      }
+    },
+    "navigation": {
+      "type": "object",
+      "properties": {
+        "buttons": { "type": "object" },
+        "catalogBrowse": {
+          "type": "object",
+          "properties": {
+            "header": { "type": "string" },
+            "footer": { "type": "string" }
+          }
+        }
+      }
+    },
+    "quickButtons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" }
+        }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "properties": {
+        "orderCreated": {
+          "type": "object",
+          "properties": {
+            "body": { "type": "string" },
+            "buttonKeys": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "orderDispatched": {
+          "type": "object",
+          "properties": {
+            "body": { "type": "string" },
+            "buttonKeys": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "orderDelivered": {
+          "type": "object",
+          "properties": {
+            "refrigerationNudge": { "type": "string" },
+            "standardBody": { "type": "string" },
+            "buttonKeys": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "ndrAlert": {
+          "type": "object",
+          "properties": {
+            "body": { "type": "string" },
+            "buttonKeys": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "csatPrompt": {
+          "type": "object",
+          "properties": {
+            "body": { "type": "string" },
+            "buttonKeys": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "cartAbandoned": {
+          "type": "object",
+          "properties": {
+            "body": { "type": "string" },
+            "buttonKeys": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "replenishmentOrRebooking": {
+          "type": "object",
+          "properties": {
+            "body": { "type": "string" },
+            "cycleDays": { "type": "number" },
+            "buttonKeys": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "marketingCampaigns": {
+      "type": "object",
+      "properties": {
+        "firstOrderNurture": {
+          "type": "object",
+          "properties": {
+            "discountCode": { "type": "string" },
+            "promptInstruction": { "type": "string" }
+          }
+        },
+        "repeatReplenishment": {
+          "type": "object",
+          "properties": {
+            "reminderCycleDays": { "type": "number" },
+            "promptInstruction": { "type": "string" }
+          }
+        },
+        "cartAbandoned": {
+          "type": "object",
+          "properties": {
+            "promptInstruction": { "type": "string" }
+          }
+        },
+        "winBack": {
+          "type": "object",
+          "properties": {
+            "discountCode": { "type": "string" },
+            "inactiveThresholdDays": { "type": "number" },
+            "promptInstruction": { "type": "string" }
+          }
+        }
+      }
+    },
+    "supportMessages": {
+      "type": "object",
+      "properties": {
+        "escalationCustomerNotice": { "type": "string" },
+        "escalationAdminDossier": { "type": "string" },
+        "deliveryRedirect": { "type": "string" },
+        "statusRedirect": { "type": "string" },
+        "botResumed": { "type": "string" },
+        "fallbackError": { "type": "string" }
+      }
+    },
+    "offerings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "description", "price"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "category": { "type": "string" },
+          "type": { "type": "string", "enum": ["product", "service"] },
+          "price": { "type": "string" },
+          "description": { "type": "string" },
+          "requiresRefrigeration": { "type": "boolean" },
+          "durationMinutes": { "type": "number" },
+          "bookingUrl": { "type": "string", "format": "uri" },
+          "checkoutUrl": { "type": "string", "format": "uri" },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "price", "sku"],
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "buttonLabel": { "type": "string" },
+                "price": { "type": "number" },
+                "sku": { "type": "string" },
+                "checkoutOrBookingUrl": { "type": "string", "format": "uri" },
+                "durationMinutes": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "products": { "type": "array" },
+    "faqs": { "type": "array" }
+  }
+}
