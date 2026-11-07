@@ -7,7 +7,7 @@ export const brandLinksSchema = z.object({
   websiteUrl: z.string().url().default('https://mintarabites.com'),
   cartUrl: z.string().url().default('https://mintarabites.com/cart'),
   bookingUrl: z.string().url().optional(),
-  orderTrackingUrl: z.string().url().default('https://mintarabites.com/account/orders'),
+  orderTrackingUrl: z.string().url().default('https://mintarabites.com/track-order'),
   appointmentTrackingUrl: z.string().url().optional(),
   instagram: z.string().default('@mintarabites'),
   instagramUrl: z.string().url().default('https://instagram.com/mintarabites'),
@@ -43,7 +43,7 @@ export const brandSchema = z
     const links = data.links || {
       websiteUrl: defaultSite,
       cartUrl: data.cartUrl || `${defaultSite}/cart`,
-      orderTrackingUrl: data.orderTrackingUrl || `${defaultSite}/account/orders`,
+      orderTrackingUrl: data.orderTrackingUrl || `${defaultSite}/track-order`,
       instagram: data.instagram || '@mintarabites',
       instagramUrl: data.instagramUrl || 'https://instagram.com/mintarabites',
       googleReviewUrl: data.googleReviewUrl || 'https://g.page/r/mintarabites/review',

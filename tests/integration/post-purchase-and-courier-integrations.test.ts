@@ -162,7 +162,8 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
     });
 
     it('should schedule an automated CSAT review prompt job for 3 days post-delivery', async () => {
-      const targetPhone = '919876543252';
+      const targetPhone = `9198765${Math.floor(10000 + Math.random() * 90000)}`;
+      const orderNumber = `MB-${Date.now().toString().slice(-4)}`;
 
       await app.inject({
         method: 'POST',
@@ -174,7 +175,7 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
           event: 'order.delivered',
           customerPhone: targetPhone,
           customerName: 'Ananya',
-          orderNumber: 'MB-8803',
+          orderNumber,
           items: [
             {
               name: 'Mintara Trio Pack',
@@ -192,7 +193,7 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
       );
 
       expect(csatJob).toBeDefined();
-      expect((csatJob?.payload as any).orderNumber).toBe('MB-8803');
+      expect((csatJob?.payload as any).orderNumber).toBe(orderNumber);
       expect((csatJob?.payload as any).customerName).toBe('Ananya');
 
       // Verify scheduled time is ~3 days in future
