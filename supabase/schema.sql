@@ -525,7 +525,17 @@ CREATE TABLE IF NOT EXISTS public.ndr_instructions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4.8 Cross-Schema Views for Domain Isolation
+-- 4.9 Dynamic Business Settings & Knowledge (Supabase Storage & ChatGPT Action)
+CREATE TABLE IF NOT EXISTS public.company_settings (
+  id VARCHAR(64) PRIMARY KEY DEFAULT 'current',
+  profile JSONB NOT NULL,
+  custom_markdown TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_by VARCHAR(64) DEFAULT 'system'
+);
+
+-- 4.10 Cross-Schema Views for Domain Isolation
 CREATE OR REPLACE VIEW support.conversations AS SELECT * FROM public.support_conversations;
 CREATE OR REPLACE VIEW support.messages AS SELECT * FROM public.support_messages;
 CREATE OR REPLACE VIEW support.tickets AS SELECT * FROM public.support_tickets;
@@ -1269,6 +1279,7 @@ ALTER TABLE public.support_tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.marketing_dispatches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messaging_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.worker_jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.company_settings ENABLE ROW LEVEL SECURITY;
 
 -- 8.1 Public Read Policies (for storefront catalog & social proof)
 DROP POLICY IF EXISTS "Public products are viewable by everyone" ON public.products;
@@ -1317,6 +1328,10 @@ BEGIN
 
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'worker_jobs' AND policyname = 'service_role_manage_worker_jobs') THEN
     CREATE POLICY service_role_manage_worker_jobs ON public.worker_jobs FOR ALL TO service_role USING (true) WITH CHECK (true);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'company_settings' AND policyname = 'service_role_manage_company_settings') THEN
+    CREATE POLICY service_role_manage_company_settings ON public.company_settings FOR ALL TO service_role USING (true) WITH CHECK (true);
   END IF;
 END $$;
 

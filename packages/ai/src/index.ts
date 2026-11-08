@@ -170,3 +170,5 @@ export function createAiProvider(): AiProvider {
     },
   };
 }
+
+export * from './business-synthesizer.js';

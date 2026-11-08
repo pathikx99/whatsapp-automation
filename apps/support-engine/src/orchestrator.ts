@@ -62,7 +62,13 @@ export interface IncomingMessagePayload {
 }
 
 export interface SupportResolutionResult {
-  action: 'answered' | 'escalated' | 'delivery_redirect' | 'ignored' | 'escalated_muted';
+  action:
+    | 'answered'
+    | 'escalated'
+    | 'delivery_redirect'
+    | 'ignored'
+    | 'escalated_muted'
+    | 'rate_limited';
   responseText?: string;
   customerIdentified: boolean;
   customerId?: string;
@@ -86,13 +92,33 @@ export class SupportOrchestrator {
   private businessProfile: BusinessProfile;
   private defaultButtons: WhatsAppButtonAction[];
 
+  private customBusinessProfileProvided: boolean = false;
+
   constructor(options: SupportOrchestratorOptions = {}) {
     this.ecommerceAdapter = options.ecommerceAdapter || createEcommerceAdapter();
     this.aiProvider = options.aiProvider || createAiProvider();
     this.whatsappProvider = options.whatsappProvider || createWhatsAppProvider();
     this.platformRepo = options.platformRepository || getPlatformRepository();
-    this.businessProfile = options.businessProfile || getBusinessProfile();
+    if (options.businessProfile) {
+      this.customBusinessProfileProvided = true;
+      this.businessProfile = options.businessProfile;
+    } else {
+      this.businessProfile = getBusinessProfile();
+    }
     // Exclude any legacy human agent buttons
+    this.defaultButtons = (this.businessProfile.quickButtons || []).filter(
+      (b) => b.id !== 'btn_talk_human',
+    );
+  }
+
+  public reloadBusinessProfile(newProfile?: BusinessProfile): void {
+    if (newProfile) {
+      this.customBusinessProfileProvided = true;
+      this.businessProfile = newProfile;
+    } else {
+      this.customBusinessProfileProvided = false;
+      this.businessProfile = getBusinessProfile();
+    }
     this.defaultButtons = (this.businessProfile.quickButtons || []).filter(
       (b) => b.id !== 'btn_talk_human',
     );
@@ -230,7 +256,7 @@ export class SupportOrchestrator {
   }
 
   public async processMessage(payload: IncomingMessagePayload): Promise<SupportResolutionResult> {
-    const rawText = payload.body.trim();
+    const rawText = (payload.body || '').trim();
     const fromPhone = payload.from;
     const buttonId = payload.interactiveButtonId;
 
@@ -239,7 +265,7 @@ export class SupportOrchestrator {
       'Processing incoming WhatsApp message',
     );
 
-    if (!rawText && !buttonId && !payload.media && !payload.location) {
+    if (!rawText && !buttonId && !payload.media && !payload.location && !payload.catalogOrder) {
       return { action: 'ignored', customerIdentified: false };
     }
 
@@ -272,7 +298,8 @@ export class SupportOrchestrator {
       (payload.media ? `[Media: ${payload.media.type}]` : '') ||
       (payload.location
         ? `[Location: ${payload.location.latitude},${payload.location.longitude}]`
-        : '');
+        : '') ||
+      (payload.catalogOrder ? `[Cart Order: ${payload.catalogOrder.items.length} items]` : '');
 
     // Save incoming user message to history
     await this.platformRepo.appendMessage(
@@ -281,6 +308,58 @@ export class SupportOrchestrator {
       'customer',
       userMessageContent,
     );
+
+    // Dynamic Business Knowledge Refresh if using global config
+    if (!this.customBusinessProfileProvided) {
+      this.businessProfile = getBusinessProfile();
+      this.defaultButtons = (this.businessProfile.quickButtons || []).filter(
+        (b) => b.id !== 'btn_talk_human',
+      );
+    }
+
+    // 2.1 Customer Daily Message Guardrail (for free-form conversation)
+    const isTest =
+      (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST)) &&
+      process.env.ENABLE_TEST_RATE_LIMIT !== 'true';
+
+    if (!buttonId && !payload.media && !isTest) {
+      const maxDaily = this.businessProfile.engagement?.maxDailyMessagesPerCustomer ?? 25;
+      if (maxDaily > 0) {
+        const dailyStats = await this.platformRepo.checkCustomerDailyLimit(fromPhone, maxDaily);
+        if (!dailyStats.allowed) {
+          logger.warn(
+            { fromPhone, messagesToday: dailyStats.countToday, maxDaily },
+            'Customer daily message limit exceeded',
+          );
+          const limitReply = `You've reached our automated message limit for today (${dailyStats.countToday}/${maxDaily} messages). 🙏\n\nOur customer care team is available to help! Feel free to reach out via email at ${
+            this.businessProfile.brand.links?.supportEmail || 'contact@mintarabites.com'
+          } or visit our website: ${
+            this.businessProfile.brand.links?.websiteUrl || 'https://mintarabites.com'
+          }.`;
+
+          await this.whatsappProvider.sendMessage({
+            type: 'text',
+            to: fromPhone,
+            body: limitReply,
+          });
+
+          await this.platformRepo.appendMessage(
+            conversation.id,
+            fromPhone,
+            'assistant',
+            limitReply,
+          );
+
+          return {
+            action: 'rate_limited',
+            responseText: limitReply,
+            customerIdentified: Boolean(customer),
+            customerId: customer?.id,
+            conversationId: conversation.id,
+          };
+        }
+      }
+    }
 
     // Handle incoming Location pin (e.g. for delivery landmarks / NDR resolution)
     if (payload.location) {
@@ -800,6 +879,75 @@ export class SupportOrchestrator {
     // -------------------------------------------------------------------------
     // 7. Interactive Pack Size / Service Selection & In-Chat Prefilled Link
     // -------------------------------------------------------------------------
+    const defaultPackSizes: Record<
+      string,
+      { name: string; size: string; price: number; sku: string; url?: string }
+    > = {
+      btn_size_paan_150g: {
+        name: 'Artisanal Paan Mukhwas',
+        size: '150g',
+        price: 149,
+        sku: 'paan-mukhwas-150g',
+        url: 'https://mintarabites.com/products/artisanal-paan-mukhwas?variant=paan-mukhwas-150g',
+      },
+      btn_size_paan_300g: {
+        name: 'Artisanal Paan Mukhwas',
+        size: '300g',
+        price: 249,
+        sku: 'paan-mukhwas-300g',
+        url: 'https://mintarabites.com/products/artisanal-paan-mukhwas?variant=paan-mukhwas-300g',
+      },
+      btn_size_paan_500g: {
+        name: 'Artisanal Paan Mukhwas',
+        size: '500g',
+        price: 399,
+        sku: 'paan-mukhwas-500g',
+        url: 'https://mintarabites.com/products/artisanal-paan-mukhwas?variant=paan-mukhwas-500g',
+      },
+      btn_size_seeds_100g: {
+        name: 'Seeds Fusion',
+        size: '100g',
+        price: 149,
+        sku: 'seeds-fusion-regular-100g',
+        url: 'https://mintarabites.com/products/seeds-fusion?variant=seeds-fusion-regular-100g',
+      },
+      btn_size_seeds_200g: {
+        name: 'Seeds Fusion',
+        size: '200g',
+        price: 249,
+        sku: 'seeds-fusion-regular-200g',
+        url: 'https://mintarabites.com/products/seeds-fusion?variant=seeds-fusion-regular-200g',
+      },
+      btn_size_coconut_100g: {
+        name: 'Coconut Crunch',
+        size: '100g',
+        price: 149,
+        sku: 'coconut-crunch-100g',
+        url: 'https://mintarabites.com/products/coconut-crunch?variant=coconut-crunch-100g',
+      },
+      btn_size_coconut_200g: {
+        name: 'Coconut Crunch',
+        size: '200g',
+        price: 249,
+        sku: 'coconut-crunch-200g',
+        url: 'https://mintarabites.com/products/coconut-crunch?variant=coconut-crunch-200g',
+      },
+      btn_size_trio_350g: {
+        name: 'Mintara Trio Pack',
+        size: '350g',
+        price: 399,
+        sku: 'combo-trio-350g',
+        url: 'https://mintarabites.com/products/mintara-trio-pack',
+      },
+      btn_size_family_700g: {
+        name: 'Family Feast Pack',
+        size: '700g',
+        price: 699,
+        sku: 'combo-family-700g',
+        url: 'https://mintarabites.com/products/family-feast-pack',
+      },
+    };
+
     const dynamicVariantMap: Record<
       string,
       { name: string; size: string; price: number; sku: string; url?: string }
@@ -809,6 +957,7 @@ export class SupportOrchestrator {
       for (const offering of this.businessProfile.offerings) {
         if (offering.variants && offering.variants.length > 0) {
           for (const variant of offering.variants) {
+            const fallbackDefaultUrl = defaultPackSizes[variant.id]?.url;
             dynamicVariantMap[variant.id] = {
               name: offering.title,
               size: variant.title,
@@ -816,29 +965,17 @@ export class SupportOrchestrator {
               sku: variant.sku,
               url:
                 variant.checkoutOrBookingUrl ||
+                (variant as any).url ||
+                offering.url ||
+                fallbackDefaultUrl ||
                 (offering.type === 'service' || this.businessProfile.businessType === 'service'
                   ? offering.bookingUrl
-                  : undefined),
+                  : offering.checkoutUrl),
             };
           }
         }
       }
     }
-
-    const defaultPackSizes: Record<
-      string,
-      { name: string; size: string; price: number; sku: string; url?: string }
-    > = {
-      btn_size_paan_150g: { name: 'Artisanal Paan Mukhwas', size: '150g', price: 149, sku: 'paan-mukhwas-150g' },
-      btn_size_paan_300g: { name: 'Artisanal Paan Mukhwas', size: '300g', price: 249, sku: 'paan-mukhwas-300g' },
-      btn_size_paan_500g: { name: 'Artisanal Paan Mukhwas', size: '500g', price: 399, sku: 'paan-mukhwas-500g' },
-      btn_size_seeds_100g: { name: 'Seeds Fusion', size: '100g', price: 149, sku: 'seeds-fusion-regular-100g' },
-      btn_size_seeds_200g: { name: 'Seeds Fusion', size: '200g', price: 249, sku: 'seeds-fusion-regular-200g' },
-      btn_size_coconut_100g: { name: 'Coconut Crunch', size: '100g', price: 149, sku: 'coconut-crunch-100g' },
-      btn_size_coconut_200g: { name: 'Coconut Crunch', size: '200g', price: 249, sku: 'coconut-crunch-200g' },
-      btn_size_trio_350g: { name: 'Mintara Trio Pack', size: '350g', price: 399, sku: 'combo-trio-350g' },
-      btn_size_family_700g: { name: 'Family Feast Pack', size: '700g', price: 699, sku: 'combo-family-700g' },
-    };
 
     const packSizeMap = {
       ...defaultPackSizes,
@@ -861,13 +998,12 @@ export class SupportOrchestrator {
     if (selectedPack) {
       const isService = this.businessProfile.businessType === 'service';
       const checkoutUrl =
-        isService && selectedPack.url
-          ? selectedPack.url
-          : generatePrefilledCheckoutUrl(
-              [{ name: `${selectedPack.name} (${selectedPack.size})`, quantity: 1, unitPrice: selectedPack.price, sku: selectedPack.sku }],
-              undefined,
-              this.businessProfile.brand.links?.websiteUrl || this.businessProfile.brand.websiteUrl,
-            );
+        selectedPack.url ||
+        generatePrefilledCheckoutUrl(
+          [{ name: `${selectedPack.name} (${selectedPack.size})`, quantity: 1, unitPrice: selectedPack.price, sku: selectedPack.sku }],
+          undefined,
+          this.businessProfile.brand.links?.websiteUrl || this.businessProfile.brand.websiteUrl,
+        );
 
       const msg = isService
         ? `✅ Selected *${selectedPack.name} (${selectedPack.size})*! ✨\n\n` +
@@ -875,11 +1011,11 @@ export class SupportOrchestrator {
           `• Fee: ₹${selectedPack.price}\n\n` +
           `👉 *Tap here to schedule / book your appointment:*\n${checkoutUrl}\n\n` +
           `Need to view another service or check appointment status?`
-        : `✅ Added *${selectedPack.name} (${selectedPack.size})* to your cart! 🌿\n\n` +
+        : `✨ Here is the direct product link for *${selectedPack.name} (${selectedPack.size})*:\n\n` +
           `• Pack Size: ${selectedPack.size}\n` +
           `• Price: ₹${selectedPack.price}\n` +
           `• Freshness: Handcrafted fresh on order & 100% supari-free\n\n` +
-          `👉 *Tap here to checkout instantly:*\n${checkoutUrl}\n\n` +
+          `👉 *Tap here to view & order directly:*\n${checkoutUrl}\n\n` +
           `Need to order another treat or track a parcel?`;
 
       const browseBtnTitle =
@@ -975,9 +1111,14 @@ export class SupportOrchestrator {
         { name: 'Artisanal Paan Mukhwas (300g)', sku: 'paan-mukhwas-300g', quantity: 1, unitPrice: 249 },
       ];
 
+      const activePromoCode =
+        this.businessProfile.promotions?.enabled && this.businessProfile.promotions?.activePromo?.code
+          ? this.businessProfile.promotions.activePromo.code
+          : undefined;
+
       const checkoutUrl = generatePrefilledCheckoutUrl(
         finalItems,
-        undefined,
+        activePromoCode,
         this.businessProfile.brand.links?.websiteUrl || this.businessProfile.brand.websiteUrl,
       );
 
@@ -1158,6 +1299,12 @@ export class SupportOrchestrator {
           customer,
           customCustomerMessage: cleanedCustomerText || undefined,
         });
+      }
+
+      // Optional simulated human typing latency if explicitly enabled via configuration
+      if (process.env.ENABLE_SIMULATED_TYPING_LATENCY === 'true') {
+        const simulatedTypingDelay = Math.min(Math.max(replyText.length * 12, 1000), 2800);
+        await new Promise((resolve) => setTimeout(resolve, simulatedTypingDelay));
       }
 
       // Normal AI response dispatch via WhatsApp with interactive quick reply buttons

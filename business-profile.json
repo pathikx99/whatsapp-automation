@@ -19,7 +19,7 @@
     "links": {
       "websiteUrl": "https://mintarabites.com",
       "cartUrl": "https://mintarabites.com/cart",
-      "orderTrackingUrl": "https://mintarabites.com/track-order",
+      "orderTrackingUrl": "https://mintarabites.com/account/orders",
       "instagram": "@mintarabites",
       "instagramUrl": "https://instagram.com/mintarabites",
       "googleReviewUrl": "https://g.page/r/mintarabites/review",
@@ -70,6 +70,17 @@
       "wholesaleAndGifting": "We provide custom trial boxes for cafes, restaurants, wedding hampers, and corporate gifting. Inquire via WhatsApp or contact.mintarabites@gmail.com."
     },
     "customMarkdown": "## Storage & Shelf Life Guidelines\n- **Paan Mukhwas**: Store in the refrigerator upon receipt. Shelf life is 3 months refrigerated.\n- **Seeds Fusion & Coconut Crunch**: Store in an airtight container at cool room temperature away from direct sunlight. Shelf life is 6 months."
+  },
+  "promotions": {
+    "enabled": false,
+    "activePromo": null
+  },
+  "engagement": {
+    "maxDailyMessagesPerCustomer": 25,
+    "maxMonthlyMarketingDispatches": 3,
+    "marketingCooldownDays": 14,
+    "cartAbandonmentWindowHours": 4,
+    "dailyMessageWarningThreshold": 15
   },
   "navigation": {
     "buttons": {
@@ -196,6 +207,7 @@
       "price": "₹149 (150g) / ₹249 (300g) / ₹399 (500g)",
       "description": "Traditional Calcuttia paan leaf infusion with natural rose gulkand, sweet fennel & roasted dhanadal. 100% supari-free. Keep refrigerated upon arrival.",
       "requiresRefrigeration": true,
+      "url": "https://mintarabites.com/products/artisanal-paan-mukhwas",
       "checkoutUrl": "https://mintarabites.com/cart",
       "variants": [
         {
@@ -203,21 +215,24 @@
           "title": "150g",
           "buttonLabel": "🌿 Paan 150g (₹149)",
           "price": 149,
-          "sku": "paan-mukhwas-150g"
+          "sku": "paan-mukhwas-150g",
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/artisanal-paan-mukhwas?variant=paan-mukhwas-150g"
         },
         {
           "id": "btn_size_paan_300g",
           "title": "300g",
           "buttonLabel": "🌿 Paan 300g (₹249)",
           "price": 249,
-          "sku": "paan-mukhwas-300g"
+          "sku": "paan-mukhwas-300g",
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/artisanal-paan-mukhwas?variant=paan-mukhwas-300g"
         },
         {
           "id": "btn_size_paan_500g",
           "title": "500g",
           "buttonLabel": "🌿 Paan 500g (₹399)",
           "price": 399,
-          "sku": "paan-mukhwas-500g"
+          "sku": "paan-mukhwas-500g",
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/artisanal-paan-mukhwas?variant=paan-mukhwas-500g"
         }
       ]
     },
@@ -229,6 +244,7 @@
       "price": "₹149 (100g) / ₹249 (200g)",
       "description": "6-seed powerhouse blend (white & black sesame, pumpkin, watermelon, sunflower, flax) lightly salted or zesty lime roasted.",
       "requiresRefrigeration": false,
+      "url": "https://mintarabites.com/products/seeds-fusion",
       "checkoutUrl": "https://mintarabites.com/cart",
       "variants": [
         {
@@ -236,14 +252,16 @@
           "title": "100g",
           "buttonLabel": "🌱 Seeds 100g (₹149)",
           "price": 149,
-          "sku": "seeds-fusion-regular-100g"
+          "sku": "seeds-fusion-regular-100g",
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/seeds-fusion?variant=seeds-fusion-regular-100g"
         },
         {
           "id": "btn_size_seeds_200g",
           "title": "200g",
           "buttonLabel": "🌱 Seeds 200g (₹249)",
           "price": 249,
-          "sku": "seeds-fusion-regular-200g"
+          "sku": "seeds-fusion-regular-200g",
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/seeds-fusion?variant=seeds-fusion-regular-200g"
         }
       ]
     },
@@ -255,6 +273,7 @@
       "price": "₹149 (100g) / ₹249 (200g)",
       "description": "Toasted coconut flakes, rich chocolate-coated sesame, and crisp roasted dhanadal for a guilt-free sweet crunch.",
       "requiresRefrigeration": false,
+      "url": "https://mintarabites.com/products/coconut-crunch",
       "checkoutUrl": "https://mintarabites.com/cart",
       "variants": [
         {
@@ -262,14 +281,16 @@
           "title": "100g",
           "buttonLabel": "🥥 Coconut 100g (₹149)",
           "price": 149,
-          "sku": "coconut-crunch-100g"
+          "sku": "coconut-crunch-100g",
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/coconut-crunch?variant=coconut-crunch-100g"
         },
         {
           "id": "btn_size_coconut_200g",
           "title": "200g",
           "buttonLabel": "🥥 Coconut 200g (₹249)",
           "price": 249,
-          "sku": "coconut-crunch-200g"
+          "sku": "coconut-crunch-200g",
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/coconut-crunch?variant=coconut-crunch-200g"
         }
       ]
     },
@@ -281,6 +302,7 @@
       "price": "₹399 (350g)",
       "description": "Signature collection featuring Paan Mukhwas (150g), Seeds Fusion (100g), and Coconut Crunch (100g) in an airtight gift box.",
       "requiresRefrigeration": true,
+      "url": "https://mintarabites.com/products/mintara-trio-pack",
       "checkoutUrl": "https://mintarabites.com/cart",
       "variants": [
         {
@@ -288,7 +310,8 @@
           "title": "350g",
           "buttonLabel": "🎁 Trio Pack 350g (₹399)",
           "price": 399,
-          "sku": "combo-trio-350g"
+          "sku": "combo-trio-350g",
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/mintara-trio-pack"
         }
       ]
     },
@@ -300,6 +323,7 @@
       "price": "₹699 (700g)",
       "description": "Large sharing pack (300g Paan + 200g Seeds + 200g Coconut) with FREE Pan-India express delivery.",
       "requiresRefrigeration": true,
+      "url": "https://mintarabites.com/products/family-feast-pack",
       "checkoutUrl": "https://mintarabites.com/cart",
       "variants": [
         {
@@ -307,7 +331,8 @@
           "title": "700g",
           "buttonLabel": "🎉 Family Pack 700g (₹699)",
           "price": 699,
-          "sku": "combo-family-700g"
+          "sku": "combo-family-700g",
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/family-feast-pack"
         }
       ]
     }

@@ -38,12 +38,29 @@ export class MarketingOrchestrator {
   private platformRepo: PlatformRepository;
   private businessProfile: BusinessProfile;
 
+  private customBusinessProfileProvided: boolean = false;
+
   constructor(options: MarketingOrchestratorOptions = {}) {
     this.ecommerceAdapter = options.ecommerceAdapter || createEcommerceAdapter();
     this.aiProvider = options.aiProvider || createAiProvider();
     this.whatsappProvider = options.whatsappProvider || createWhatsAppProvider();
     this.platformRepo = options.platformRepository || getPlatformRepository();
-    this.businessProfile = options.businessProfile || getBusinessProfile();
+    if (options.businessProfile) {
+      this.customBusinessProfileProvided = true;
+      this.businessProfile = options.businessProfile;
+    } else {
+      this.businessProfile = getBusinessProfile();
+    }
+  }
+
+  public reloadBusinessProfile(newProfile?: BusinessProfile): void {
+    if (newProfile) {
+      this.customBusinessProfileProvided = true;
+      this.businessProfile = newProfile;
+    } else {
+      this.customBusinessProfileProvided = false;
+      this.businessProfile = getBusinessProfile();
+    }
   }
 
   /**
@@ -51,6 +68,9 @@ export class MarketingOrchestrator {
    */
   public async runScheduledCampaign(): Promise<MarketingCampaignReport> {
     logger.info('Starting automated AI marketing campaign evaluation...');
+    if (!this.customBusinessProfileProvided) {
+      this.businessProfile = getBusinessProfile();
+    }
 
     const candidates = await this.ecommerceAdapter.getMarketingCandidates();
     const activeProducts = await this.ecommerceAdapter.getAllActiveProducts();
@@ -118,6 +138,11 @@ export class MarketingOrchestrator {
           { phone, segment: candidate.segmentType },
           'Successfully generated and dispatched AI marketing message',
         );
+
+        // Anti-burst pacing throttle between marketing dispatches to protect Meta sender quality score
+        if (process.env.NODE_ENV !== 'test') {
+          await new Promise((resolve) => setTimeout(resolve, 600 + Math.random() * 600));
+        }
       } catch (err) {
         logger.error({ err, phone }, 'Failed generating or sending marketing message');
         await this.platformRepo.logMarketingDispatch(
@@ -153,13 +178,19 @@ export class MarketingOrchestrator {
     const customerName = candidate.customer.firstName || 'Friend';
     const productNames = products.map((p) => p.title).join(', ');
     const campaigns = this.businessProfile.marketingCampaigns;
+    const isPromoEnabled = Boolean(
+      this.businessProfile.promotions?.enabled && this.businessProfile.promotions?.activePromo,
+    );
+    const activeDiscountCode = isPromoEnabled
+      ? this.businessProfile.promotions?.activePromo?.code || ''
+      : '';
 
     let promptContext = '';
     switch (candidate.segmentType) {
       case 'FIRST_ORDER_NURTURE':
         promptContext = formatTemplate(campaigns.firstOrderNurture.promptInstruction, {
           brandName: this.businessProfile.brand.name,
-          discountCode: campaigns.firstOrderNurture.discountCode,
+          discountCode: activeDiscountCode || '',
           customerName,
         });
         break;
@@ -179,7 +210,7 @@ export class MarketingOrchestrator {
       case 'WIN_BACK':
         promptContext = formatTemplate(campaigns.winBack.promptInstruction, {
           brandName: this.businessProfile.brand.name,
-          discountCode: campaigns.winBack.discountCode,
+          discountCode: activeDiscountCode || '',
           customerName,
         });
         break;
@@ -188,6 +219,10 @@ export class MarketingOrchestrator {
     const websiteUrl =
       this.businessProfile.brand.links?.websiteUrl || this.businessProfile.brand.websiteUrl;
 
+    const promoGuideline = isPromoEnabled
+      ? `- Active Promotion: Mention code "${this.businessProfile.promotions?.activePromo?.code}" (${this.businessProfile.promotions?.activePromo?.description}).`
+      : `- Strict Promotion Policy: Do NOT include or offer any discount codes, coupons, or promo codes. All treats are direct from the artisan with free express shipping on ₹699+.`;
+
     const systemPrompt = `You are an expert, respectful WhatsApp marketing copywriter for "${this.businessProfile.brand.name}" (${this.businessProfile.brand.location}) — ${this.businessProfile.brand.tagline}.
 
 Guidelines:
@@ -195,6 +230,7 @@ Guidelines:
 - Tone: Warm, appetizing, friendly, non-spammy.
 - Format: Clean WhatsApp styling (use *bold* for product names/codes, subtle emojis).
 - Include store link: ${websiteUrl}
+${promoGuideline}
 - Brand Highlights: ${(this.businessProfile.brandHighlights || []).slice(0, 3).join('; ')}`;
 
     const userPrompt = `Draft a personalized WhatsApp message for:

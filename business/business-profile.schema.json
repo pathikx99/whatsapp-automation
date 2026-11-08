@@ -6,7 +6,7 @@
   "properties": {
     "businessType": {
       "type": "string",
-      "enum": ["ecommerce", "service", "hybrid"],
+      "enum": ["ecommerce", "service", "b2b", "hybrid"],
       "default": "ecommerce"
     },
     "terminology": {
@@ -189,6 +189,35 @@
         "fallbackError": { "type": "string" }
       }
     },
+    "promotions": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "activePromo": {
+          "type": ["object", "null"],
+          "properties": {
+            "code": { "type": "string" },
+            "description": { "type": "string" },
+            "discountPercentage": { "type": "number" },
+            "discountAmount": { "type": "number" },
+            "minOrderAmount": { "type": "number" },
+            "validUntil": { "type": "string" },
+            "terms": { "type": "string" }
+          },
+          "required": ["code", "description"]
+        }
+      }
+    },
+    "engagement": {
+      "type": "object",
+      "properties": {
+        "maxDailyMessagesPerCustomer": { "type": "number", "default": 25 },
+        "maxMonthlyMarketingDispatches": { "type": "number", "default": 3 },
+        "marketingCooldownDays": { "type": "number", "default": 14 },
+        "cartAbandonmentWindowHours": { "type": "number", "default": 4 },
+        "dailyMessageWarningThreshold": { "type": "number", "default": 15 }
+      }
+    },
     "offerings": {
       "type": "array",
       "items": {
@@ -205,6 +234,7 @@
           "durationMinutes": { "type": "number" },
           "bookingUrl": { "type": "string", "format": "uri" },
           "checkoutUrl": { "type": "string", "format": "uri" },
+          "url": { "type": "string", "format": "uri" },
           "variants": {
             "type": "array",
             "items": {

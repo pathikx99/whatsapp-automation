@@ -299,4 +299,101 @@ describe('New Features & Improvements (Typing, Multimodal, Lists, Idempotency, L
       expect(res.content).toBeDefined();
     }, 20000);
   });
+
+  describe('8. Link Authenticity & Configurable Promotions System', () => {
+    it('should enable preview_url for text messages with URLs and respect explicit override', async () => {
+      const provider = createWhatsAppProvider();
+      const sendSpy = await provider.sendMessage({
+        type: 'text',
+        to: '919876543210',
+        body: 'Check out our authentic fresh treats: https://mintarabites.com',
+      });
+      expect(['sent', 'simulated']).toContain(sendSpy.status);
+    });
+
+    it('should strictly prohibit promo codes in system prompt when promotions are disabled', async () => {
+      const { buildBusinessSystemPrompt } = await import('@whatsapp-platform/config');
+      const prompt = buildBusinessSystemPrompt({});
+      expect(prompt).toContain('DISCOUNT & PROMO CODE POLICY:');
+      expect(prompt).toContain('STRICT RULE: Currently, there are NO active promo codes');
+      expect(prompt).not.toContain('ACTIVE STORE PROMOTION:');
+    });
+
+    it('should dynamically inject active promo code and terms when promotions are enabled', async () => {
+      const { buildBusinessSystemPrompt, loadBusinessKnowledge } = await import('@whatsapp-platform/config');
+      const loaded = loadBusinessKnowledge();
+      const originalPromo = loaded.profile.promotions;
+
+      try {
+        loaded.profile.promotions = {
+          enabled: true,
+          activePromo: {
+            code: 'FESTIVE15',
+            description: '15% off festive orders',
+            discountPercentage: 15,
+            minOrderAmount: 499,
+            validUntil: '2026-12-31',
+            terms: 'Valid on fresh paan and seeds',
+          },
+        };
+
+        const prompt = buildBusinessSystemPrompt({});
+        expect(prompt).toContain('ACTIVE STORE PROMOTION:');
+        expect(prompt).toContain('Promo Code: FESTIVE15');
+        expect(prompt).toContain('15% off festive orders');
+        expect(prompt).toContain('Minimum Order Value: ₹499');
+      } finally {
+        loaded.profile.promotions = originalPromo;
+      }
+    });
+
+    it('should omit discount parameter from cart checkout URLs when promotions are disabled and include when enabled', async () => {
+      const { loadBusinessKnowledge } = await import('@whatsapp-platform/config');
+      const loaded = loadBusinessKnowledge();
+      const originalPromo = loaded.profile.promotions;
+
+      try {
+        // 1. Promotions disabled (current state)
+        loaded.profile.promotions = { enabled: false, activePromo: null };
+        const orchDisabled = new SupportOrchestrator();
+        const resDisabled = await orchDisabled.processMessage({
+          from: '919876543210',
+          messageId: `test_cart_${Date.now()}_1`,
+          body: '',
+          catalogOrder: {
+            catalogId: 'cat_test_1',
+            items: [{ productRetailerId: 'paan-mukhwas-300g', quantity: 1, itemPrice: 249 }],
+          },
+        });
+        expect(resDisabled.action).toBe('answered');
+        expect(resDisabled.checkoutUrl).toBeDefined();
+        expect(resDisabled.checkoutUrl).not.toContain('discount=');
+
+        // 2. Promotions enabled with active promo
+        loaded.profile.promotions = {
+          enabled: true,
+          activePromo: {
+            code: 'MINTARA20',
+            description: '20% off',
+            discountPercentage: 20,
+          },
+        };
+        const orchEnabled = new SupportOrchestrator();
+        const resEnabled = await orchEnabled.processMessage({
+          from: '919876543210',
+          messageId: `test_cart_${Date.now()}_2`,
+          body: '',
+          catalogOrder: {
+            catalogId: 'cat_test_1',
+            items: [{ productRetailerId: 'paan-mukhwas-300g', quantity: 1, itemPrice: 249 }],
+          },
+        });
+        expect(resEnabled.action).toBe('answered');
+        expect(resEnabled.checkoutUrl).toBeDefined();
+        expect(resEnabled.checkoutUrl).toContain('discount=MINTARA20');
+      } finally {
+        loaded.profile.promotions = originalPromo;
+      }
+    }, 25000);
+  });
 });

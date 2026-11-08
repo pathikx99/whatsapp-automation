@@ -48,6 +48,7 @@ export interface WhatsAppTextMessage {
   type: 'text';
   to: string;
   body: string;
+  previewUrl?: boolean;
 }
 
 export interface WhatsAppTemplateMessage {
@@ -156,10 +157,14 @@ export function createWhatsAppProvider(): WhatsAppProvider {
     },
 
     async sendMessage(message: OutboundWhatsAppMessage): Promise<WhatsAppSendResult> {
-      if (!isConfigured) {
+      const isTestEnv =
+        (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST)) &&
+        process.env.LIVE_WHATSAPP_TEST !== 'true';
+
+      if (!isConfigured || isTestEnv) {
         logger.info(
-          { recipient: message.to },
-          'WhatsApp provider mock: message logged (unconfigured provider)',
+          { recipient: message.to, isTestEnv },
+          'WhatsApp provider mock: message logged (unconfigured or test mode)',
         );
         return {
           messageId: `mock_${Date.now()}_${Math.random().toString(36).substring(7)}`,
@@ -184,8 +189,13 @@ export function createWhatsAppProvider(): WhatsAppProvider {
 
         if (message.type === 'text') {
           payload.type = 'text';
+          const shouldPreview =
+            message.previewUrl !== undefined
+              ? Boolean(message.previewUrl)
+              : /https?:\/\//i.test(message.body);
+
           payload.text = {
-            preview_url: false,
+            preview_url: shouldPreview,
             body: message.body,
           };
         } else if (message.type === 'interactive') {
@@ -280,6 +290,7 @@ export function createWhatsAppProvider(): WhatsAppProvider {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(8000),
         });
 
         if (!response.ok) {
@@ -377,7 +388,11 @@ export function createWhatsAppProvider(): WhatsAppProvider {
     },
 
     async markMessageAsRead(messageId: string): Promise<boolean> {
-      if (!isConfigured || messageId.startsWith('mock_') || messageId.startsWith('wamid_test')) {
+      const isTestEnv =
+        (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST)) &&
+        process.env.LIVE_WHATSAPP_TEST !== 'true';
+
+      if (!isConfigured || isTestEnv || messageId.startsWith('mock_') || messageId.startsWith('wamid_test')) {
         logger.debug({ messageId }, 'WhatsApp provider mock: marked message as read');
         return true;
       }
@@ -395,6 +410,7 @@ export function createWhatsAppProvider(): WhatsAppProvider {
             status: 'read',
             message_id: messageId,
           }),
+          signal: AbortSignal.timeout(8000),
         });
         return response.ok;
       } catch (err) {
@@ -421,6 +437,7 @@ export function createWhatsAppProvider(): WhatsAppProvider {
         headers: {
           Authorization: `Bearer ${config.WHATSAPP_API_KEY}`,
         },
+        signal: AbortSignal.timeout(10000),
       });
 
       if (!response.ok) {
@@ -456,6 +473,7 @@ export function createWhatsAppProvider(): WhatsAppProvider {
         headers: {
           Authorization: `Bearer ${config.WHATSAPP_API_KEY}`,
         },
+        signal: AbortSignal.timeout(10000),
       });
 
       if (!metaRes.ok) {

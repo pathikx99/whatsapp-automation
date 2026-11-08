@@ -202,6 +202,9 @@ importers:
       '@fastify/helmet':
         specifier: ^13.0.1
         version: 13.2.0
+      '@whatsapp-platform/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@whatsapp-platform/config':
         specifier: workspace:*
         version: link:../../packages/config

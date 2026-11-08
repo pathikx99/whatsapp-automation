@@ -1,0 +1,271 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "WhatsApp Platform - Business & Operations Assistant API",
+    "description": "API enabling ChatGPT to manage business knowledge, active promotions, offerings, customer engagement guardrails, and owner metrics for WhatsApp AI Concierge.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.mintarabites.com",
+      "description": "Production API Server"
+    }
+  ],
+  "paths": {
+    "/api/business/ingest": {
+      "post": {
+        "operationId": "ingestBusinessKnowledge",
+        "summary": "Ingest raw business knowledge and auto-configure WhatsApp assistant",
+        "description": "Feeds raw text (brochures, product lists, FAQs, policies) to the AI synthesizer to auto-detect business model (FMCG, service, B2B, hybrid) and activate the business profile.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["rawText"],
+                "properties": {
+                  "rawText": {
+                    "type": "string",
+                    "description": "Raw unformatted business knowledge, brochure, product list, or policy guidelines."
+                  },
+                  "businessType": {
+                    "type": "string",
+                    "enum": ["ecommerce", "service", "b2b", "hybrid"],
+                    "description": "Optional business model override."
+                  },
+                  "brandName": {
+                    "type": "string",
+                    "description": "Optional brand name hint."
+                  },
+                  "websiteUrl": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Optional primary website URL."
+                  },
+                  "location": {
+                    "type": "string",
+                    "description": "Optional primary operating location."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Business profile synthesized and activated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "version": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "profile": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/business/profile": {
+      "get": {
+        "operationId": "getBusinessProfile",
+        "summary": "Get current active business profile and settings",
+        "description": "Retrieves the active profile including brand details, offerings, promotions, and customer engagement limits.",
+        "responses": {
+          "200": {
+            "description": "Active business profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "profile": { "type": "object" },
+                    "version": { "type": "integer" },
+                    "updatedAt": { "type": "string" },
+                    "updatedBy": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateBusinessProfile",
+        "summary": "Update business profile or settings",
+        "description": "Updates business profile fields (e.g. active promo codes, offerings, FAQs, or message limits) and hot-reloads the WhatsApp assistant.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "profile": {
+                    "type": "object",
+                    "description": "Full or updated business profile object."
+                  },
+                  "customMarkdown": {
+                    "type": "string",
+                    "description": "Optional additional markdown knowledge."
+                  },
+                  "updatedBy": {
+                    "type": "string",
+                    "description": "Identifier of the editor (e.g. 'chatgpt')."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile updated and hot-reloaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "version": { "type": "integer" },
+                    "message": { "type": "string" },
+                    "profile": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/owner/metrics/customers": {
+      "get": {
+        "operationId": "getCustomerMetrics",
+        "summary": "Get per-customer message statistics and engagement counts",
+        "description": "Retrieves message counts (total, today), last active time, and status for individual customers.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50 },
+            "description": "Maximum number of customer records to retrieve."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of customer engagement metrics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": { "type": "integer" },
+                    "customers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "phoneNumber": { "type": "string" },
+                          "customerName": { "type": "string" },
+                          "totalMessages": { "type": "integer" },
+                          "messagesToday": { "type": "integer" },
+                          "lastActiveAt": { "type": "string" },
+                          "status": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/owner/metrics/carts": {
+      "get": {
+        "operationId": "getCartMetrics",
+        "summary": "Get recent cart activity and abandoned cart metrics",
+        "description": "Retrieves items left in carts, cart values, and recovery statuses.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 50 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent cart activities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": { "type": "integer" },
+                    "carts": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/owner/metrics/summary": {
+      "get": {
+        "operationId": "getDashboardSummary",
+        "summary": "Get operational summary for business owner",
+        "description": "Returns high-level overview: messages sent today, active conversations, open escalation tickets, and abandoned carts.",
+        "responses": {
+          "200": {
+            "description": "Dashboard summary statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "totalConversations": { "type": "integer" },
+                        "activeConversations": { "type": "integer" },
+                        "escalatedConversations": { "type": "integer" },
+                        "totalMessagesToday": { "type": "integer" },
+                        "openTickets": { "type": "integer" },
+                        "abandonedCartsTotal": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Admin-Key",
+        "description": "Secure administrative API key for mutating company settings and accessing dashboard metrics"
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ]
+}

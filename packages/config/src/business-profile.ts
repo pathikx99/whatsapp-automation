@@ -335,7 +335,7 @@ export const supportMessagesSchema = z.object({
     ),
 });
 
-export const businessTypeSchema = z.enum(['ecommerce', 'service', 'hybrid']).default('ecommerce');
+export const businessTypeSchema = z.enum(['ecommerce', 'service', 'b2b', 'hybrid']).default('ecommerce');
 
 export const terminologySchema = z.object({
   itemNoun: z.string().default('treat'),
@@ -367,20 +367,46 @@ export const offeringSchema = z.object({
   durationMinutes: z.number().optional(),
   bookingUrl: z.string().url().optional(),
   checkoutUrl: z.string().url().optional(),
+  url: z.string().url().optional(),
   variants: z.array(offeringVariantSchema).default([]),
 });
 
 export const productSchema = z.object({
+  id: z.string().optional(),
   title: z.string(),
   category: z.string().default('General'),
   price: z.string(),
   description: z.string(),
   requiresRefrigeration: z.boolean().default(false),
+  url: z.string().url().optional(),
 });
 
 export const faqSchema = z.object({
   question: z.string(),
   answer: z.string(),
+});
+
+export const activePromoSchema = z.object({
+  code: z.string(),
+  description: z.string(),
+  discountPercentage: z.number().optional(),
+  discountAmount: z.number().optional(),
+  minOrderAmount: z.number().optional(),
+  validUntil: z.string().optional(),
+  terms: z.string().optional(),
+});
+
+export const promotionsSchema = z.object({
+  enabled: z.boolean().default(false),
+  activePromo: activePromoSchema.nullable().optional(),
+});
+
+export const engagementSchema = z.object({
+  maxDailyMessagesPerCustomer: z.number().default(25),
+  maxMonthlyMarketingDispatches: z.number().default(3),
+  marketingCooldownDays: z.number().default(14),
+  cartAbandonmentWindowHours: z.number().default(4),
+  dailyMessageWarningThreshold: z.number().default(15),
 });
 
 export const businessProfileSchema = z.object({
@@ -391,6 +417,8 @@ export const businessProfileSchema = z.object({
   persona: personaSchema.default({}),
   brandHighlights: z.array(z.string()).default([]),
   knowledge: knowledgeSchema.default({}),
+  promotions: promotionsSchema.default({ enabled: false, activePromo: null }),
+  engagement: engagementSchema.default({}),
   navigation: navigationSchema.default({}),
   quickButtons: z
     .array(navigationButtonSchema)
@@ -560,6 +588,61 @@ export function resetBusinessKnowledgeCache(): void {
   cachedBusinessKnowledge = null;
 }
 
+export function updateCachedBusinessKnowledge(
+  profile: BusinessProfile,
+  customKnowledgeMarkdown?: string,
+): LoadedBusinessKnowledge {
+  cachedBusinessKnowledge = {
+    profile,
+    customKnowledgeMarkdown: customKnowledgeMarkdown ?? profile.knowledge?.customMarkdown,
+  };
+  return cachedBusinessKnowledge;
+}
+
+export function saveBusinessProfileToDisk(
+  profile: BusinessProfile,
+  customMarkdown?: string,
+): { jsonPath: string; mdPath?: string } {
+  if (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST)) {
+    updateCachedBusinessKnowledge(profile, customMarkdown);
+    return { jsonPath: 'simulated_test_path.json', mdPath: 'simulated_test_path.md' };
+  }
+
+  const rootDir = findRootDir();
+  const businessDir = path.join(rootDir, 'business');
+  if (!fs.existsSync(businessDir)) {
+    fs.mkdirSync(businessDir, { recursive: true });
+  }
+
+  const jsonTarget = path.join(businessDir, 'business-profile.json');
+  const tempJson = `${jsonTarget}.${Date.now()}.${Math.random().toString(36).substring(7)}.tmp`;
+  fs.writeFileSync(tempJson, JSON.stringify(profile, null, 2), 'utf8');
+  fs.renameSync(tempJson, jsonTarget);
+
+  // Also keep root business-profile.json in sync if it exists
+  const rootJson = path.join(rootDir, 'business-profile.json');
+  if (fs.existsSync(rootJson)) {
+    try {
+      const tempRootJson = `${rootJson}.${Date.now()}.${Math.random().toString(36).substring(7)}.tmp`;
+      fs.writeFileSync(tempRootJson, JSON.stringify(profile, null, 2), 'utf8');
+      fs.renameSync(tempRootJson, rootJson);
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  let mdTarget: string | undefined;
+  if (customMarkdown !== undefined) {
+    mdTarget = path.join(businessDir, 'business-knowledge.md');
+    const tempMd = `${mdTarget}.${Date.now()}.${Math.random().toString(36).substring(7)}.tmp`;
+    fs.writeFileSync(tempMd, customMarkdown, 'utf8');
+    fs.renameSync(tempMd, mdTarget);
+  }
+
+  updateCachedBusinessKnowledge(profile, customMarkdown);
+  return { jsonPath: jsonTarget, mdPath: mdTarget };
+}
+
 /**
  * Builds the AI System Prompt dynamically from the single business profile document
  */
@@ -568,7 +651,7 @@ export function buildBusinessSystemPrompt(options: {
   productCatalogContext?: string;
 }): string {
   const { profile, customKnowledgeMarkdown } = loadBusinessKnowledge();
-  const { brand, persona, brandHighlights, faqs, knowledge, businessType, offerings, products, terminology } = profile;
+  const { brand, persona, brandHighlights, faqs, knowledge, businessType, offerings, products, terminology, promotions } = profile;
 
   const isService = businessType === 'service';
   const roleLabel = isService ? 'Services & Appointments' : 'Product Catalog';
@@ -587,6 +670,17 @@ export function buildBusinessSystemPrompt(options: {
     knowledge?.policies && Object.keys(knowledge.policies).length > 0
       ? `Brand Policies:\n${Object.entries(knowledge.policies).map(([k, v]) => `• ${k}: ${v}`).join('\n')}`
       : '';
+
+  const promotionsSection =
+    promotions?.enabled && promotions?.activePromo
+      ? `ACTIVE STORE PROMOTION:
+• Promo Code: ${promotions.activePromo.code}
+• Offer: ${promotions.activePromo.description}
+${promotions.activePromo.discountPercentage ? `• Discount: ${promotions.activePromo.discountPercentage}% off\n` : ''}${promotions.activePromo.discountAmount ? `• Discount: ₹${promotions.activePromo.discountAmount} off\n` : ''}${promotions.activePromo.minOrderAmount ? `• Minimum Order Value: ₹${promotions.activePromo.minOrderAmount}\n` : ''}${promotions.activePromo.validUntil ? `• Expiry: ${promotions.activePromo.validUntil}\n` : ''}${promotions.activePromo.terms ? `• Terms: ${promotions.activePromo.terms}\n` : ''}INSTRUCTION: You MAY share this promo code with customers when they inquire about discounts, coupons, offers, or when finalizing an order.`
+      : `DISCOUNT & PROMO CODE POLICY:
+• STRICT RULE: Currently, there are NO active promo codes, coupon codes, or discount vouchers available in chat.
+• NEVER invent, generate, or promise any discount codes, coupons, or special price cuts.
+• If a customer explicitly asks for a discount, coupon, or promo code, answer warmly and politely: explain that our treats are freshly handcrafted to order using 100% natural, premium ingredients (100% supari-free & tobacco-free) at honest direct pricing. You can also highlight that Pan-India express delivery is completely FREE on orders of ₹699 and above!`;
 
   const rulesSection =
     persona.rules.length > 0
@@ -623,6 +717,8 @@ followed by a reassuring message telling the customer that you have transferred 
               `- *${o.title}* (${o.category}): ${o.price}\n  ${o.description}${
                 o.durationMinutes ? `\n  Duration: ${o.durationMinutes} minutes` : ''
               }${o.bookingUrl ? `\n  Booking Link: ${o.bookingUrl}` : ''}${
+                o.url ? `\n  Direct Product Link: ${o.url}` : ''
+              }${
                 o.variants && o.variants.length > 0
                   ? '\n  Options/Tiers: ' +
                     o.variants.map((v) => `${v.title} (₹${v.price})`).join(', ')
@@ -633,7 +729,12 @@ followed by a reassuring message telling the customer that you have transferred 
       : products.length > 0
         ? `Available Products:\n` +
           products
-            .map((p) => `- *${p.title}* (${p.category}): ${p.price}\n  ${p.description}`)
+            .map(
+              (p) =>
+                `- *${p.title}* (${p.category}): ${p.price}\n  ${p.description}${
+                  p.url ? `\n  Direct Product Link: ${p.url}` : ''
+                }`,
+            )
             .join('\n\n')
         : '';
 
@@ -653,6 +754,8 @@ ${highlightsSection}
 ${valuesSection}
 
 ${policiesSection}
+
+${promotionsSection}
 
 ${rulesSection}
 

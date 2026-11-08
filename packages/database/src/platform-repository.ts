@@ -1,12 +1,67 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { createLocalSupabaseClient } from './local-client.js';
 import { createLogger } from '@whatsapp-platform/shared';
+import {
+  BusinessProfile,
+  businessProfileSchema,
+  saveBusinessProfileToDisk,
+  updateCachedBusinessKnowledge,
+} from '@whatsapp-platform/config';
 
 const logger = createLogger({ name: 'platform-repository' });
 
 export type ConversationStatus = 'active' | 'escalated' | 'closed';
 export type MessageRole = 'customer' | 'assistant' | 'human_agent' | 'system';
 export type TicketStatus = 'open' | 'in_progress' | 'resolved';
+
+export interface CompanySettingsRecord {
+  id: string;
+  profile: BusinessProfile;
+  customMarkdown?: string;
+  version: number;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface CustomerEngagementStats {
+  phoneNumber: string;
+  totalInbound: number;
+  totalOutbound: number;
+  totalMessages: number;
+  messagesToday: number;
+  lastMessageAt: string | null;
+}
+
+export interface OwnerCustomerMetric {
+  phoneNumber: string;
+  customerName: string;
+  totalMessages: number;
+  messagesToday: number;
+  lastActiveAt: string;
+  status: string;
+  ordersCount: number;
+  totalSpend: number;
+}
+
+export interface OwnerCartMetric {
+  id: string;
+  customerId?: string;
+  email?: string;
+  phone?: string;
+  cartItemsSummary: string;
+  cartValue: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface EngagementSummary {
+  totalConversations: number;
+  activeConversations: number;
+  escalatedConversations: number;
+  totalMessagesToday: number;
+  openTickets: number;
+  abandonedCartsTotal: number;
+}
 
 export interface PlatformConversation {
   id: string;
@@ -145,6 +200,7 @@ export class PlatformRepository {
   private promoCodesCache: Map<string, PromoCodeRecord> = new Map();
   private customerReviewsCache: CustomerReviewRecord[] = [];
   private ndrInstructionsCache: NdrInstructionRecord[] = [];
+  private companySettingsCache: CompanySettingsRecord | null = null;
 
   constructor(customClient?: SupabaseClient) {
     this.client = customClient || createLocalSupabaseClient();
@@ -1343,6 +1399,276 @@ export class PlatformRepository {
         );
     } catch (err) {
       logger.debug({ err, eventId }, 'Non-fatal error recording processed webhook in DB');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 14. COMPANY SETTINGS (SUPABASE STORAGE & CHATGPT ACTIONS)
+  // ---------------------------------------------------------------------------
+  public async getCompanySettings(): Promise<CompanySettingsRecord | null> {
+    try {
+      const { data, error } = await this.client
+        .from('company_settings')
+        .select('*')
+        .eq('id', 'current')
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        logger.debug({ error }, 'Non-fatal querying company_settings table');
+      }
+
+      if (data && data.profile) {
+        const parsed = businessProfileSchema.safeParse(data.profile);
+        if (parsed.success) {
+          this.companySettingsCache = {
+            id: data.id || 'current',
+            profile: parsed.data,
+            customMarkdown: data.custom_markdown || undefined,
+            version: data.version || 1,
+            updatedAt: data.updated_at || new Date().toISOString(),
+            updatedBy: data.updated_by || 'supabase',
+          };
+          updateCachedBusinessKnowledge(parsed.data, data.custom_markdown);
+          return this.companySettingsCache;
+        }
+      }
+    } catch (err) {
+      logger.debug({ err }, 'Non-fatal error fetching company_settings from Supabase');
+    }
+
+    return this.companySettingsCache;
+  }
+
+  public async saveCompanySettings(
+    profile: BusinessProfile,
+    customMarkdown?: string,
+    updatedBy = 'system',
+  ): Promise<{ success: boolean; version: number }> {
+    const nextVersion = (this.companySettingsCache?.version || 0) + 1;
+    const now = new Date().toISOString();
+    const effectiveMarkdown =
+      customMarkdown !== undefined
+        ? customMarkdown
+        : (this.companySettingsCache?.customMarkdown || undefined);
+
+    this.companySettingsCache = {
+      id: 'current',
+      profile,
+      customMarkdown: effectiveMarkdown,
+      version: nextVersion,
+      updatedAt: now,
+      updatedBy,
+    };
+
+    // Hot-reload in-memory config cache & sync to disk for persistence
+    try {
+      saveBusinessProfileToDisk(profile, effectiveMarkdown);
+    } catch (diskErr) {
+      logger.warn({ diskErr }, 'Non-fatal error persisting business profile to disk');
+    }
+
+    try {
+      await this.client.from('company_settings').upsert({
+        id: 'current',
+        profile,
+        custom_markdown: effectiveMarkdown || null,
+        version: nextVersion,
+        updated_at: now,
+        updated_by: updatedBy,
+      });
+    } catch (dbErr) {
+      logger.warn({ dbErr }, 'Non-fatal error upserting company_settings into Supabase');
+    }
+
+    return { success: true, version: nextVersion };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 15. CUSTOMER ENGAGEMENT ANALYTICS & GUARDRAILS
+  // ---------------------------------------------------------------------------
+  public async getCustomerMessageStats(phoneNumber: string): Promise<CustomerEngagementStats> {
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfTodayIso = startOfToday.toISOString();
+
+    try {
+      const { data, error } = await this.client
+        .from('support_messages')
+        .select('role, created_at')
+        .eq('phone_number', cleanPhone)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        logger.debug({ error, phoneNumber: cleanPhone }, 'Failed fetching message stats from DB');
+      }
+
+      const rows = data || [];
+      const totalInbound = rows.filter((r) => r.role === 'customer').length;
+      const totalOutbound = rows.filter((r) => r.role === 'assistant' || r.role === 'human_agent').length;
+      const messagesToday = rows.filter((r) => r.created_at >= startOfTodayIso).length;
+      const lastRow = rows.length > 0 ? rows[rows.length - 1] : undefined;
+      const lastMessageAt = lastRow ? lastRow.created_at : null;
+
+      return {
+        phoneNumber: cleanPhone,
+        totalInbound,
+        totalOutbound,
+        totalMessages: rows.length,
+        messagesToday,
+        lastMessageAt,
+      };
+    } catch {
+      return {
+        phoneNumber: cleanPhone,
+        totalInbound: 0,
+        totalOutbound: 0,
+        totalMessages: 0,
+        messagesToday: 0,
+        lastMessageAt: null,
+      };
+    }
+  }
+
+  public async checkCustomerDailyLimit(
+    phoneNumber: string,
+    limit = 25,
+  ): Promise<{ allowed: boolean; countToday: number; limit: number }> {
+    const stats = await this.getCustomerMessageStats(phoneNumber);
+    return {
+      allowed: stats.messagesToday < limit,
+      countToday: stats.messagesToday,
+      limit,
+    };
+  }
+
+  public async getOwnerCustomerMetrics(limit = 50): Promise<OwnerCustomerMetric[]> {
+    try {
+      const { data: convs, error } = await this.client
+        .from('support_conversations')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(limit);
+
+      if (error || !convs) return [];
+
+      const metrics: OwnerCustomerMetric[] = [];
+      for (const conv of convs) {
+        const stats = await this.getCustomerMessageStats(conv.phone_number);
+        let ordersCount = 0;
+        let totalSpend = 0;
+
+        try {
+          const cleanPhone = conv.phone_number.replace(/\D/g, '');
+          const { data: customerRow } = await this.client
+            .from('customers')
+            .select('total_orders, total_spend')
+            .eq('phone', cleanPhone)
+            .maybeSingle();
+
+          if (customerRow) {
+            ordersCount = Number(customerRow.total_orders) || 0;
+            totalSpend = Number(customerRow.total_spend) || 0;
+          }
+        } catch {
+          // Non-fatal
+        }
+
+        metrics.push({
+          phoneNumber: conv.phone_number,
+          customerName: conv.customer_name || 'Customer',
+          totalMessages: stats.totalMessages,
+          messagesToday: stats.messagesToday,
+          lastActiveAt: stats.lastMessageAt || conv.updated_at,
+          status: conv.status,
+          ordersCount,
+          totalSpend,
+        });
+      }
+      return metrics;
+    } catch {
+      return [];
+    }
+  }
+
+  public async getOwnerCartMetrics(limit = 50): Promise<OwnerCartMetric[]> {
+    try {
+      const { data, error } = await this.client
+        .from('abandoned_cart_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error || !data) return [];
+
+      return data.map((d: any) => ({
+        id: d.id,
+        customerId: d.customer_id,
+        email: d.email,
+        phone: d.phone,
+        cartItemsSummary: typeof d.cart_data === 'object' ? JSON.stringify(d.cart_data) : String(d.cart_data || ''),
+        cartValue: Number(d.cart_value) || 0,
+        status: d.status || 'abandoned',
+        createdAt: d.created_at,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
+  public async getEngagementSummary(): Promise<EngagementSummary> {
+    try {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      const [
+        { count: totalConversations },
+        { count: activeConversations },
+        { count: escalatedConversations },
+        { count: openTickets },
+        { count: abandonedCartsTotal },
+        { count: totalMessagesToday },
+      ] = await Promise.all([
+        this.client.from('support_conversations').select('*', { count: 'exact', head: true }),
+        this.client
+          .from('support_conversations')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'active'),
+        this.client
+          .from('support_conversations')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'escalated'),
+        this.client
+          .from('support_tickets')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'open'),
+        this.client
+          .from('abandoned_cart_logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'pending'),
+        this.client
+          .from('support_messages')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', startOfToday.toISOString()),
+      ]);
+
+      return {
+        totalConversations: totalConversations || 0,
+        activeConversations: activeConversations || 0,
+        escalatedConversations: escalatedConversations || 0,
+        totalMessagesToday: totalMessagesToday || 0,
+        openTickets: openTickets || 0,
+        abandonedCartsTotal: abandonedCartsTotal || 0,
+      };
+    } catch {
+      return {
+        totalConversations: 0,
+        activeConversations: 0,
+        escalatedConversations: 0,
+        totalMessagesToday: 0,
+        openTickets: 0,
+        abandonedCartsTotal: 0,
+      };
     }
   }
 }

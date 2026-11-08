@@ -2,7 +2,13 @@ import fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import crypto from 'node:crypto';
-import { getConfig, getBusinessProfile, formatTemplate } from '@whatsapp-platform/config';
+import {
+  getConfig,
+  getBusinessProfile,
+  formatTemplate,
+  businessProfileSchema,
+} from '@whatsapp-platform/config';
+import { synthesizeBusinessProfile } from '@whatsapp-platform/ai';
 import {
   checkLocalDbHealth,
   DbHealthResult,
@@ -204,12 +210,15 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     const token = query['hub.verify_token'];
     const challenge = query['hub.challenge'];
 
-    if (
-      mode === 'subscribe' &&
+    const isTest = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
+    const isTokenValid =
+      token &&
       (token === config.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
-        token === 'mb_whatsapp_webhook_token_2026' ||
-        token === 'mintara_secure_webhook_verify_2026')
-    ) {
+        (isTest &&
+          (token === 'mb_whatsapp_webhook_token_2026' ||
+            token === 'mintara_secure_webhook_verify_2026')));
+
+    if (mode === 'subscribe' && isTokenValid) {
       req.log.info('Meta WhatsApp webhook verification successful');
       return reply.status(200).send(challenge);
     }
@@ -522,8 +531,8 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
           // Schedule replenishment reminder for day 25 (standard velocity for 300g Paan Mukhwas ~3-4 weeks)
           const replenishmentDays = 25;
           const scheduledTime = new Date(Date.now() + replenishmentDays * 24 * 60 * 60 * 1000).toISOString();
-          void platformRepo
-            .enqueueJob(
+          try {
+            await platformRepo.enqueueJob(
               'replenishment_reminder',
               {
                 customerPhone: phone,
@@ -533,8 +542,10 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                 estimatedDays: replenishmentDays,
               },
               scheduledTime,
-            )
-            .catch((err) => req.log.error({ err, phone }, 'Failed scheduling replenishment reminder job'));
+            );
+          } catch (err) {
+            req.log.error({ err, phone }, 'Failed scheduling replenishment reminder job');
+          }
           break;
         }
 
@@ -632,22 +643,29 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
             )
             .filter((b): b is { id: string; title: string } => Boolean(b));
 
-          await whatsappProvider.sendMessage({
-            type: 'interactive',
-            to: phone,
-            body: msg,
-            buttons:
-              buttons.length > 0
-                ? buttons
-                : [{ id: 'btn_browse_catalog', title: '🛒 Browse Treats' }],
-          });
+          try {
+            await whatsappProvider.sendMessage({
+              type: 'interactive',
+              to: phone,
+              body: msg,
+              buttons:
+                buttons.length > 0
+                  ? buttons
+                  : [{ id: 'btn_browse_catalog', title: '🛒 Browse Treats' }],
+            });
+          } catch (sendErr) {
+            req.log.warn(
+              { sendErr, phone },
+              'Non-fatal error sending delivery refrigeration notice to customer',
+            );
+          }
 
           // Automated CSAT / Review Collection:
           // 3 days post-delivery, trigger a rating prompt (1–5 stars)
           const csatDelayMs = 3 * 24 * 60 * 60 * 1000;
           const scheduledTime = new Date(Date.now() + csatDelayMs).toISOString();
-          void platformRepo
-            .enqueueJob(
+          try {
+            await platformRepo.enqueueJob(
               'csat_review_prompt',
               {
                 customerPhone: phone,
@@ -655,10 +673,10 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                 orderNumber: payload.orderNumber,
               },
               scheduledTime,
-            )
-            .catch((err) =>
-              req.log.error({ err, phone }, 'Failed scheduling CSAT review prompt job'),
             );
+          } catch (err) {
+            req.log.error({ err, phone }, 'Failed scheduling CSAT review prompt job');
+          }
           break;
         }
 
@@ -729,15 +747,22 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
             )
             .filter((b): b is { id: string; title: string } => Boolean(b));
 
-          await whatsappProvider.sendMessage({
-            type: 'interactive',
-            to: phone,
-            body: msg,
-            buttons:
-              buttons.length > 0
-                ? buttons
-                : [{ id: 'btn_browse_catalog', title: '🛒 Browse Treats' }],
-          });
+          try {
+            await whatsappProvider.sendMessage({
+              type: 'interactive',
+              to: phone,
+              body: msg,
+              buttons:
+                buttons.length > 0
+                  ? buttons
+                  : [{ id: 'btn_browse_catalog', title: '🛒 Browse Treats' }],
+            });
+          } catch (sendErr) {
+            req.log.warn(
+              { sendErr, phone },
+              'Non-fatal error sending delivery refrigeration notice to customer',
+            );
+          }
 
           return reply.status(200).send({
             status: 'dispatched',
@@ -1131,6 +1156,143 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       req.log.error({ err }, 'Failed syncing reviews from store database');
       return reply.status(500).send({ error: 'Failed syncing reviews from store database' });
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // 9. DYNAMIC BUSINESS PROFILE & AI INGESTION (ChatGPT / Supabase Sync)
+  // ---------------------------------------------------------------------------
+  const adminSecret =
+    config.ADMIN_API_KEY ||
+    (process.env.NODE_ENV === 'production' ? config.ECOMMERCE_WEBHOOK_SECRET : undefined);
+
+  const requireAdminAuth = async (req: FastifyRequest, reply: FastifyReply) => {
+    if (adminSecret) {
+      const authHeader = req.headers.authorization;
+      const customHeader = (req.headers['x-admin-key'] ||
+        req.headers['x-api-key'] ||
+        req.headers['x-webhook-secret']) as string | undefined;
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : customHeader;
+
+      if (!token || token !== adminSecret) {
+        return reply.status(401).send({ error: 'Unauthorized: Invalid admin credentials' });
+      }
+    }
+  };
+
+  app.post('/api/business/ingest', { preHandler: requireAdminAuth }, async (req, reply) => {
+    const body = (req.body || {}) as {
+      rawText?: string;
+      businessType?: 'ecommerce' | 'service' | 'b2b' | 'hybrid';
+      brandName?: string;
+      websiteUrl?: string;
+      location?: string;
+    };
+
+    if (!body.rawText || typeof body.rawText !== 'string' || body.rawText.trim().length === 0) {
+      return reply.status(400).send({ error: 'rawText string is required for business ingestion' });
+    }
+
+    try {
+      const synthesized = await synthesizeBusinessProfile(body.rawText, {
+        businessType: body.businessType,
+        brandName: body.brandName,
+        websiteUrl: body.websiteUrl,
+        location: body.location,
+      });
+
+      const saveResult = await platformRepo.saveCompanySettings(
+        synthesized,
+        body.rawText,
+        'ai_ingest_endpoint',
+      );
+
+      // Hot-reload active in-memory singleton orchestrator instances
+      if (typeof (supportOrchestrator as any)?.reloadBusinessProfile === 'function') {
+        (supportOrchestrator as any).reloadBusinessProfile(synthesized);
+      }
+      if (typeof (marketingOrchestrator as any)?.reloadBusinessProfile === 'function') {
+        (marketingOrchestrator as any).reloadBusinessProfile(synthesized);
+      }
+
+      return reply.status(200).send({
+        success: true,
+        version: saveResult.version,
+        profile: synthesized,
+        message: `Successfully synthesized and activated ${synthesized.brand.name} (${synthesized.businessType.toUpperCase()}) profile!`,
+      });
+    } catch (err: any) {
+      req.log.error({ err }, 'Failed in /api/business/ingest');
+      return reply.status(500).send({ error: err.message || 'Failed synthesizing business profile' });
+    }
+  });
+
+  app.get('/api/business/profile', { preHandler: requireAdminAuth }, async (_req, reply) => {
+    const settings = await platformRepo.getCompanySettings();
+    const profile = settings?.profile || getBusinessProfile();
+    return reply.status(200).send({
+      profile,
+      version: settings?.version || 1,
+      updatedAt: settings?.updatedAt,
+      updatedBy: settings?.updatedBy,
+    });
+  });
+
+  app.put('/api/business/profile', { preHandler: requireAdminAuth }, async (req, reply) => {
+    const body = (req.body || {}) as Record<string, unknown>;
+    const profileData = body.profile ? body.profile : body;
+
+    const parsed = businessProfileSchema.safeParse(profileData);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'Invalid business profile schema',
+        details: parsed.error.issues,
+      });
+    }
+
+    const saveResult = await platformRepo.saveCompanySettings(
+      parsed.data,
+      typeof body.customMarkdown === 'string' ? body.customMarkdown : undefined,
+      typeof body.updatedBy === 'string' ? body.updatedBy : 'chatgpt_action',
+    );
+
+    // Hot-reload active in-memory singleton orchestrator instances
+    if (typeof (supportOrchestrator as any)?.reloadBusinessProfile === 'function') {
+      (supportOrchestrator as any).reloadBusinessProfile(parsed.data);
+    }
+    if (typeof (marketingOrchestrator as any)?.reloadBusinessProfile === 'function') {
+      (marketingOrchestrator as any).reloadBusinessProfile(parsed.data);
+    }
+
+    return reply.status(200).send({
+      success: true,
+      version: saveResult.version,
+      profile: parsed.data,
+      message: 'Business profile successfully updated, validated, and hot-reloaded.',
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 10. OWNER ENGAGEMENT & CART ANALYTICS (Customer Message Counts, Cart Activity)
+  // ---------------------------------------------------------------------------
+  app.get('/api/owner/metrics/customers', { preHandler: requireAdminAuth }, async (req, reply) => {
+    const query = req.query as { limit?: string };
+    const rawLimit = parseInt(query.limit || '', 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 50;
+    const customers = await platformRepo.getOwnerCustomerMetrics(limit);
+    return reply.status(200).send({ customers, count: customers.length });
+  });
+
+  app.get('/api/owner/metrics/carts', { preHandler: requireAdminAuth }, async (req, reply) => {
+    const query = req.query as { limit?: string };
+    const rawLimit = parseInt(query.limit || '', 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 50;
+    const carts = await platformRepo.getOwnerCartMetrics(limit);
+    return reply.status(200).send({ carts, count: carts.length });
+  });
+
+  app.get('/api/owner/metrics/summary', { preHandler: requireAdminAuth }, async (_req, reply) => {
+    const summary = await platformRepo.getEngagementSummary();
+    return reply.status(200).send({ summary });
   });
 
   return app;

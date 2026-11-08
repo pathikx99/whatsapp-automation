@@ -32,12 +32,14 @@ export function findRootDir(): string {
  */
 export function loadEnvironment(): void {
   const rootDir = findRootDir();
+  const isTest = process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST);
 
   // 1. Explicit override via ENV_FILE
   if (process.env.ENV_FILE) {
     const customPath = path.resolve(rootDir, process.env.ENV_FILE);
     if (fs.existsSync(customPath)) {
       dotenv.config({ path: customPath, override: true });
+      if (isTest) process.env.NODE_ENV = 'test';
       return;
     }
   }
@@ -61,6 +63,10 @@ export function loadEnvironment(): void {
   const localEnvPath = path.join(rootDir, '.env.local');
   if (fs.existsSync(localEnvPath)) {
     dotenv.config({ path: localEnvPath, override: true });
+  }
+
+  if (isTest) {
+    process.env.NODE_ENV = 'test';
   }
 }
 
@@ -147,6 +153,7 @@ export const envSchema = z.object({
 
   // Integrations & Alerts
   ECOMMERCE_WEBHOOK_SECRET: z.string().optional(),
+  ADMIN_API_KEY: z.string().optional(),
   ADMIN_ALERT_PHONE_NUMBER: z.string().optional(),
 });
 
