@@ -151,13 +151,7 @@ export interface PromoCodeRecord {
   createdAt: string;
 }
 
-export type ReviewPlatform =
-  | 'website'
-  | 'google'
-  | 'whatsapp'
-  | 'amazon'
-  | 'trustpilot'
-  | 'other';
+export type ReviewPlatform = 'website' | 'google' | 'whatsapp' | 'amazon' | 'trustpilot' | 'other';
 
 export interface CustomerReviewRecord {
   id: string;
@@ -178,10 +172,7 @@ export interface CustomerReviewRecord {
 export interface UnifiedReviewSummary {
   averageRating: number;
   totalReviews: number;
-  platformBreakdown: Record<
-    string,
-    { count: number; averageRating: number }
-  >;
+  platformBreakdown: Record<string, { count: number; averageRating: number }>;
   ratingDistribution: Record<1 | 2 | 3 | 4 | 5, number>;
 }
 
@@ -483,15 +474,47 @@ export class PlatformRepository {
     }));
   }
 
+  public async getTicketById(ticketId: string): Promise<PlatformTicket | null> {
+    const { data, error } = await this.client
+      .from('support_tickets')
+      .select('*')
+      .eq('id', ticketId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    return {
+      id: data.id,
+      conversationId: data.conversation_id,
+      phoneNumber: data.phone_number,
+      customerName: data.customer_name,
+      reason: data.reason,
+      status: data.status,
+      createdAt: data.created_at,
+      resolvedAt: data.resolved_at,
+    };
+  }
+
   public async resolveTicket(ticketId: string): Promise<PlatformTicket | null> {
     const now = new Date().toISOString();
 
-    const { data, error } = await this.client
-      .from('support_tickets')
-      .update({ status: 'resolved', resolved_at: now })
-      .eq('id', ticketId)
-      .select()
-      .single();
+    let data: any = null;
+    let error: any = null;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await this.client
+        .from('support_tickets')
+        .update({ status: 'resolved', resolved_at: now })
+        .eq('id', ticketId)
+        .select()
+        .single();
+      data = res.data;
+      error = res.error;
+      if (!error) break;
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
 
     if (error) {
       logger.error({ error, ticketId }, 'Failed resolving support_tickets row');
@@ -818,7 +841,10 @@ export class PlatformRepository {
         record.createdAt = insertResult.data.created_at;
       }
     } catch (err) {
-      logger.debug({ err, phoneNumber: cleanPhone }, 'Could not persist ad referral to database, using cache');
+      logger.debug(
+        { err, phoneNumber: cleanPhone },
+        'Could not persist ad referral to database, using cache',
+      );
     }
 
     return record;
@@ -835,7 +861,10 @@ export class PlatformRepository {
     });
 
     try {
-      let query = this.client.from('ad_referrals').select('*').order('created_at', { ascending: false });
+      let query = this.client
+        .from('ad_referrals')
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (clean) query = query.eq('phone_number', clean);
       if (adId) query = query.or(`ad_id.eq.${adId},source_id.eq.${adId}`);
@@ -935,14 +964,19 @@ export class PlatformRepository {
           (o: any) => o.status !== 'CANCELLED' && o.payment_status !== 'FAILED',
         );
         ordersCount = validOrders.length;
-        totalRevenue = validOrders.reduce((sum: number, o: any) => sum + Number(o.total_amount || 0), 0);
+        totalRevenue = validOrders.reduce(
+          (sum: number, o: any) => sum + Number(o.total_amount || 0),
+          0,
+        );
       }
     } catch {
       // Offline fallback
     }
 
-    const roas = adSpend > 0 ? Number((totalRevenue / adSpend).toFixed(2)) : totalRevenue > 0 ? Infinity : 0;
-    const conversionRate = leadsCount > 0 ? Number(((ordersCount / leadsCount) * 100).toFixed(2)) : 0;
+    const roas =
+      adSpend > 0 ? Number((totalRevenue / adSpend).toFixed(2)) : totalRevenue > 0 ? Infinity : 0;
+    const conversionRate =
+      leadsCount > 0 ? Number(((ordersCount / leadsCount) * 100).toFixed(2)) : 0;
 
     return {
       adId,
@@ -1010,7 +1044,10 @@ export class PlatformRepository {
         record.createdAt = data.created_at;
       }
     } catch (err) {
-      logger.debug({ err, code: cleanCode }, 'Could not persist promo code to database, using cache');
+      logger.debug(
+        { err, code: cleanCode },
+        'Could not persist promo code to database, using cache',
+      );
     }
 
     return record;
@@ -1368,7 +1405,9 @@ export class PlatformRepository {
     return [...this.ndrInstructionsCache];
   }
 
-  public async getLatestNdrInstruction(customerPhone: string): Promise<NdrInstructionRecord | null> {
+  public async getLatestNdrInstruction(
+    customerPhone: string,
+  ): Promise<NdrInstructionRecord | null> {
     const list = await this.getNdrInstructions(customerPhone);
     return list[0] || null;
   }
@@ -1427,17 +1466,15 @@ export class PlatformRepository {
     }
 
     try {
-      await this.client
-        .from('processed_webhooks')
-        .upsert(
-          {
-            event_id: eventId,
-            provider,
-            event_type: eventType,
-            created_at: new Date().toISOString(),
-          },
-          { onConflict: 'event_id' },
-        );
+      await this.client.from('processed_webhooks').upsert(
+        {
+          event_id: eventId,
+          provider,
+          event_type: eventType,
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: 'event_id' },
+      );
     } catch (err) {
       logger.debug({ err, eventId }, 'Non-fatal error recording processed webhook in DB');
     }
@@ -1490,7 +1527,7 @@ export class PlatformRepository {
     const effectiveMarkdown =
       customMarkdown !== undefined
         ? customMarkdown
-        : (this.companySettingsCache?.customMarkdown || undefined);
+        : this.companySettingsCache?.customMarkdown || undefined;
 
     this.companySettingsCache = {
       id: 'current',
@@ -1546,7 +1583,9 @@ export class PlatformRepository {
 
       const rows = data || [];
       const totalInbound = rows.filter((r) => r.role === 'customer').length;
-      const totalOutbound = rows.filter((r) => r.role === 'assistant' || r.role === 'human_agent').length;
+      const totalOutbound = rows.filter(
+        (r) => r.role === 'assistant' || r.role === 'human_agent',
+      ).length;
       const messagesToday = rows.filter((r) => r.created_at >= startOfTodayIso).length;
       const lastRow = rows.length > 0 ? rows[rows.length - 1] : undefined;
       const lastMessageAt = lastRow ? lastRow.created_at : null;
@@ -1664,7 +1703,8 @@ export class PlatformRepository {
         customerId: d.customer_id,
         email: d.email,
         phone: d.phone,
-        cartItemsSummary: typeof d.cart_data === 'object' ? JSON.stringify(d.cart_data) : String(d.cart_data || ''),
+        cartItemsSummary:
+          typeof d.cart_data === 'object' ? JSON.stringify(d.cart_data) : String(d.cart_data || ''),
         cartValue: Number(d.cart_value) || 0,
         status: d.status || 'abandoned',
         createdAt: d.created_at,

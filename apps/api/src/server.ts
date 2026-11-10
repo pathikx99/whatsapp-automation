@@ -16,9 +16,11 @@ import {
   createEcommerceSupabaseClient,
 } from '@whatsapp-platform/database';
 import { AppError } from '@whatsapp-platform/shared';
+import { createEcommerceAdapter } from '@whatsapp-platform/ecommerce-adapter';
 import { SupportOrchestrator } from '@whatsapp-platform/support-engine';
 import { MarketingOrchestrator } from '@whatsapp-platform/marketing-engine';
 import { createWhatsAppProvider } from '@whatsapp-platform/whatsapp';
+import { renderSupportDashboardHtml } from './support-dashboard.js';
 
 export interface ServerOptions {
   dbHealthChecker?: () => Promise<DbHealthResult>;
@@ -51,6 +53,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   const businessProfile = getBusinessProfile();
   const platformRepo = getPlatformRepository();
   const whatsappProvider = createWhatsAppProvider();
+  const ecommerceAdapter = createEcommerceAdapter();
 
   const app = fastify({
     genReqId: (req) => {
@@ -92,6 +95,8 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
       },
     },
   });
@@ -400,13 +405,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                   };
                 }
 
-                if (
-                  messageBody ||
-                  buttonId ||
-                  referralData ||
-                  mediaData ||
-                  locationData
-                ) {
+                if (messageBody || buttonId || referralData || mediaData || locationData) {
                   void supportOrchestrator
                     .processMessage({
                       from: message.from,
@@ -473,6 +472,8 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       abandonedAt?: string;
       cartAgeHours?: number;
       abandonedDurationHours?: number;
+      strictVerifiedOffersOnly?: boolean;
+      allowDynamicIncentives?: boolean;
       requiresRefrigeration?: boolean;
       reviewId?: string;
       productId?: string;
@@ -481,11 +482,13 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       comment?: string;
     };
 
-    if (!payload?.event || (!payload?.customerPhone && payload?.event !== 'review.created')) {
+    const rawPhone =
+      payload?.customerPhone || (payload as any)?.phoneNumber || (payload as any)?.phone;
+    if (!payload?.event || (!rawPhone && payload?.event !== 'review.created')) {
       return reply.status(400).send({ error: 'Bad Request: Missing event or customerPhone' });
     }
 
-    const phone = payload.customerPhone || '';
+    const phone = rawPhone || '';
     const name = payload.customerName || 'Friend';
 
     try {
@@ -530,7 +533,9 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
           // Smart Replenishment Prediction Engine:
           // Schedule replenishment reminder for day 25 (standard velocity for 300g Paan Mukhwas ~3-4 weeks)
           const replenishmentDays = 25;
-          const scheduledTime = new Date(Date.now() + replenishmentDays * 24 * 60 * 60 * 1000).toISOString();
+          const scheduledTime = new Date(
+            Date.now() + replenishmentDays * 24 * 60 * 60 * 1000,
+          ).toISOString();
           try {
             await platformRepo.enqueueJob(
               'replenishment_reminder',
@@ -538,7 +543,9 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                 customerPhone: phone,
                 customerName: name,
                 orderNumber: payload.orderNumber,
-                items: payload.items || [{ name: 'Artisanal Paan Mukhwas (300g)', quantity: 1, unitPrice: 249 }],
+                items: payload.items || [
+                  { name: 'Artisanal Paan Mukhwas (300g)', quantity: 1, unitPrice: 249 },
+                ],
                 estimatedDays: replenishmentDays,
               },
               scheduledTime,
@@ -623,8 +630,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                 brandName: businessProfile.brand.name,
                 orderNumber: payload.orderNumber || '',
                 websiteUrl:
-                  businessProfile.brand.links?.websiteUrl ||
-                  businessProfile.brand.websiteUrl,
+                  businessProfile.brand.links?.websiteUrl || businessProfile.brand.websiteUrl,
               },
             );
           }
@@ -683,14 +689,25 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
         case 'cart.abandoned': {
           const cleanPhone = phone.replace(/\D/g, '');
           const phoneSuffix = cleanPhone.slice(-4) || '10';
-          const promoCode = `TREAT10-${phoneSuffix}`;
+
+          const strictVerifiedOffersOnly =
+            payload.strictVerifiedOffersOnly === true ||
+            payload.allowDynamicIncentives === false ||
+            (businessProfile.promotions as any)?.strictVerifiedOffersOnly === true ||
+            req.headers['x-strict-verified-offers'] === 'true' ||
+            process.env.STRICT_VERIFIED_OFFERS_ONLY === 'true';
+
+          // 1. Check website Supabase database for an active verified promotion
+          const verifiedPromo = ecommerceAdapter.isConfigured()
+            ? await ecommerceAdapter.getActivePromotion().catch(() => null)
+            : null;
 
           // Determine cart abandonment duration
           let durationHours = payload.abandonedDurationHours ?? payload.cartAgeHours;
           if (durationHours === undefined && payload.abandonedAt) {
-            durationHours = (Date.now() - new Date(payload.abandonedAt).getTime()) / (1000 * 60 * 60);
+            durationHours =
+              (Date.now() - new Date(payload.abandonedAt).getTime()) / (1000 * 60 * 60);
           }
-          // Default to > 4 hours if not explicitly set to lower
           const isOverFourHours = durationHours === undefined || durationHours > 4;
 
           const baseCartUrl =
@@ -701,11 +718,21 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
           let msg: string;
           let issuedPromoCode: string | undefined = undefined;
 
-          if (isOverFourHours) {
+          if (verifiedPromo) {
+            issuedPromoCode = verifiedPromo.code;
+            const cartUrlWithPromo = `${baseCartUrl}${baseCartUrl.includes('?') ? '&' : '?'}discount=${verifiedPromo.code}&utm_source=whatsapp&utm_medium=cart_abandoned`;
+
+            msg =
+              `Hi ${name}! 🌿\n\n` +
+              `We noticed you left *${payload.cartItemName || 'your items'}* in your cart.\n\n` +
+              `Good news! An active store promotion is available: *${verifiedPromo.code}* (${verifiedPromo.discountValue}% off) ✨\n\n` +
+              `Finish your order here:\n👉 ${cartUrlWithPromo}`;
+          } else if (isOverFourHours && !strictVerifiedOffersOnly) {
+            // Dynamic single-use incentive (only when not in strict verified offers mode)
+            const promoCode = `TREAT10-${phoneSuffix}`;
             issuedPromoCode = promoCode;
             const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-            // Persist single-use personalized promo code in database
             await platformRepo
               .createPromoCode({
                 code: promoCode,
@@ -714,7 +741,9 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
                 expiresAt,
                 usageLimit: 1,
               })
-              .catch((err) => req.log.warn({ err, promoCode }, 'Non-fatal error creating promo code'));
+              .catch((err) =>
+                req.log.warn({ err, promoCode }, 'Non-fatal error creating promo code'),
+              );
 
             const cartUrlWithPromo = `${baseCartUrl}${baseCartUrl.includes('?') ? '&' : '?'}discount=${promoCode}&utm_source=whatsapp&utm_medium=cart_abandoned`;
 
@@ -725,11 +754,13 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
               `⏰ *Hurry, your personal coupon expires in 24 hours!*\n\n` +
               `Finish your checkout now for pure, 100% supari-free freshness:\n👉 ${cartUrlWithPromo}`;
           } else {
+            // Strict D2C Rule: Clean value-first reminder with ZERO random offers!
+            const cartUrlClean = `${baseCartUrl}${baseCartUrl.includes('?') ? '&' : '?'}utm_source=whatsapp&utm_medium=cart_abandoned`;
             msg = formatTemplate(businessProfile.notifications.cartAbandoned.body, {
               customerName: name,
               brandName: businessProfile.brand.name,
               cartItemName: payload.cartItemName || 'your favorite artisanal treats',
-              cartUrl: baseCartUrl,
+              cartUrl: cartUrlClean,
             });
           }
 
@@ -869,7 +900,9 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
 
     const phone = payload.customerPhone || payload.customer_phone || payload.phone;
     const customerName = payload.customerName || payload.customer_name || payload.name || 'Friend';
-    const orderNumber = String(payload.orderNumber || payload.order_number || payload.order_id || '');
+    const orderNumber = String(
+      payload.orderNumber || payload.order_number || payload.order_id || '',
+    );
     const reason =
       payload.ndr_reason ||
       payload.reason ||
@@ -941,7 +974,8 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   app.post('/api/marketing/trigger', async (req, reply) => {
     try {
       req.log.info('Marketing campaign triggered via API');
-      const report = await marketingOrchestrator.runScheduledCampaign();
+      const body = (req.body || {}) as { segment?: string };
+      const report = await marketingOrchestrator.runScheduledCampaign(body.segment);
       return reply.status(200).send({
         status: 'success',
         report,
@@ -956,8 +990,126 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   });
 
   // ---------------------------------------------------------------------------
+  // 4.1 D2C RFM Customer Segmentation
+  // ---------------------------------------------------------------------------
+  app.get('/api/marketing/rfm-segments', async (req, reply) => {
+    try {
+      const segments = await ecommerceAdapter.getRFMSegments();
+      return reply.status(200).send({
+        status: 'ok',
+        counts: segments.counts,
+        segments: {
+          champions: segments.champions,
+          loyal: segments.loyal,
+          atRisk: segments.atRisk,
+          oneTimeRecent: segments.oneTimeRecent,
+          dormant: segments.dormant,
+        },
+      });
+    } catch (err) {
+      req.log.error({ err }, 'Failed retrieving RFM segments');
+      return reply
+        .status(500)
+        .send({ error: 'Failed retrieving RFM segments from store database' });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // 4.2 Segmented Marketing Campaign Dispatch & Admin Authorization
+  // ---------------------------------------------------------------------------
+  const adminSecret =
+    config.ADMIN_API_KEY ||
+    (process.env.NODE_ENV === 'production' ? config.ECOMMERCE_WEBHOOK_SECRET : undefined);
+
+  const requireAdminAuth = async (req: FastifyRequest, reply: FastifyReply) => {
+    if (adminSecret) {
+      const authHeader = req.headers.authorization;
+      const customHeader = (req.headers['x-admin-key'] ||
+        req.headers['x-api-key'] ||
+        req.headers['x-webhook-secret']) as string | undefined;
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : customHeader;
+
+      if (!token || token !== adminSecret) {
+        return reply.status(401).send({ error: 'Unauthorized: Invalid admin credentials' });
+      }
+    }
+  };
+
+  app.post(
+    '/api/marketing/campaigns/dispatch',
+    { preHandler: requireAdminAuth },
+    async (req, reply) => {
+      try {
+        const body = (req.body || {}) as { segment?: string };
+        const report = await marketingOrchestrator.runScheduledCampaign(body.segment);
+        return reply.status(200).send({
+          status: 'success',
+          segment: body.segment || 'all',
+          report,
+        });
+      } catch (err) {
+        req.log.error({ err }, 'Error dispatching segmented marketing campaign');
+        return reply.status(500).send({
+          status: 'error',
+          message: err instanceof Error ? err.message : 'Unknown error during campaign dispatch',
+        });
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------------------
   // 5. Admin & Analytics Endpoints
   // ---------------------------------------------------------------------------
+  app.get('/api/analytics/d2c-performance', async (req, reply) => {
+    try {
+      const [engagement, rfm, activePromo, openTickets, reviewSummary] = await Promise.all([
+        platformRepo.getEngagementSummary().catch(() => null),
+        ecommerceAdapter.getRFMSegments().catch(() => null),
+        ecommerceAdapter.getActivePromotion().catch(() => null),
+        platformRepo.getEscalationTickets('open').catch(() => []),
+        platformRepo.getUnifiedReviewSummary().catch(() => null),
+      ]);
+
+      const totalConvs = engagement?.totalConversations || 0;
+      const escalatedConvs = engagement?.escalatedConversations || 0;
+      const deflectionRate =
+        totalConvs > 0 ? Math.round(((totalConvs - escalatedConvs) / totalConvs) * 100) : 100;
+
+      return reply.status(200).send({
+        status: 'ok',
+        scorecard: {
+          support: {
+            totalConversations: totalConvs,
+            activeConversations: engagement?.activeConversations || 0,
+            openEscalations: openTickets.length,
+            deflectionRatePercent: deflectionRate,
+            csatAverage: reviewSummary?.averageRating || 5.0,
+            totalReviews: reviewSummary?.totalReviews || 0,
+          },
+          rfmSegments: rfm?.counts || {
+            total: 0,
+            champions: 0,
+            loyal: 0,
+            atRisk: 0,
+            oneTimeRecent: 0,
+            dormant: 0,
+          },
+          activeWebsitePromotion: activePromo
+            ? {
+                code: activePromo.code,
+                discountValue: activePromo.discountValue,
+                discountType: activePromo.discountType,
+                terms: activePromo.terms,
+              }
+            : null,
+          abandonedCartsTracked: engagement?.abandonedCartsTotal || 0,
+        },
+      });
+    } catch (err) {
+      req.log.error({ err }, 'Failed compiling D2C performance metrics');
+      return reply.status(500).send({ error: 'Failed compiling D2C performance metrics' });
+    }
+  });
   app.get('/api/analytics/overview', async (_req, reply) => {
     const summary = await platformRepo.getAnalyticsSummary();
     return reply.status(200).send({ status: 'ok', summary });
@@ -971,84 +1123,132 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     return reply.status(200).send({ status: 'ok', report });
   });
 
-  app.get('/api/support/tickets', async (req, reply) => {
+  app.get('/api/support/tickets', { preHandler: requireAdminAuth }, async (req, reply) => {
     const query = req.query as { status?: 'open' | 'in_progress' | 'resolved' };
     const tickets = await platformRepo.getEscalationTickets(query.status);
     return reply.status(200).send({ status: 'ok', count: tickets.length, tickets });
   });
 
-  app.post('/api/support/tickets/:id/resolve', async (req, reply) => {
+  app.get('/api/support/tickets/:id', { preHandler: requireAdminAuth }, async (req, reply) => {
     const params = req.params as { id: string };
-    const resolved = await platformRepo.resolveTicket(params.id);
-
-    if (!resolved) {
+    const ticket = await platformRepo.getTicketById(params.id);
+    if (!ticket) {
       return reply.status(404).send({ error: 'Ticket not found' });
     }
 
-    // Notify customer that human support has concluded and AI bot is active again
-    void whatsappProvider
-      .sendMessage({
-        type: 'interactive',
-        to: resolved.phoneNumber,
-        body:
-          `Hello ${resolved.customerName || 'there'}! 🙏\n\n` +
-          `Your support inquiry has been resolved by our team. Our automated AI assistant is back online if you need anything else! ✨`,
-        buttons: [
-          { id: 'btn_browse_catalog', title: '🛒 Browse Treats' },
-          { id: 'btn_track_order', title: '📦 Track on Web' },
-        ],
-      })
-      .catch((err: unknown) => {
-        req.log.error({ err }, 'Failed sending resolution message to customer');
-      });
+    const messages = await platformRepo.getRecentMessages(ticket.phoneNumber, 50);
+    const customer = await ecommerceAdapter
+      .getCustomerByPhone(ticket.phoneNumber)
+      .catch(() => null);
+    let orders: any[] = [];
+    if (customer?.id) {
+      orders = await ecommerceAdapter.getCustomerOrders(customer.id).catch(() => []);
+    }
 
     return reply.status(200).send({
-      status: 'resolved',
-      ticket: resolved,
-      message: 'Ticket resolved and AI bot unmuted for customer',
+      status: 'ok',
+      ticket,
+      messages,
+      customerDossier: {
+        customer,
+        orders,
+      },
     });
   });
+
+  app.post(
+    '/api/support/tickets/:id/resolve',
+    { preHandler: requireAdminAuth },
+    async (req, reply) => {
+      const params = req.params as { id: string };
+      const resolved = await platformRepo.resolveTicket(params.id);
+
+      if (!resolved) {
+        return reply.status(404).send({ error: 'Ticket not found' });
+      }
+
+      // Notify customer that human support has concluded and AI bot is active again
+      void whatsappProvider
+        .sendMessage({
+          type: 'interactive',
+          to: resolved.phoneNumber,
+          body:
+            `Hello ${resolved.customerName || 'there'}! 🙏\n\n` +
+            `Your support inquiry has been resolved by our team. Our automated AI assistant is back online if you need anything else! ✨`,
+          buttons: [
+            { id: 'btn_browse_catalog', title: '🛒 Browse Treats' },
+            { id: 'btn_track_order', title: '📦 Track on Web' },
+          ],
+        })
+        .catch((err: unknown) => {
+          req.log.error({ err }, 'Failed sending resolution message to customer');
+        });
+
+      return reply.status(200).send({
+        status: 'resolved',
+        ticket: resolved,
+        message: 'Ticket resolved and AI bot unmuted for customer',
+      });
+    },
+  );
 
   // ---------------------------------------------------------------------------
   // 5.1 Human Agent Live-Reply API (Live Agent Chat)
   // ---------------------------------------------------------------------------
-  app.post('/api/support/conversations/:id/reply', async (req, reply) => {
-    const params = req.params as { id: string };
-    const body = req.body as { message?: string; agentName?: string };
+  app.post(
+    '/api/support/conversations/:id/reply',
+    { preHandler: requireAdminAuth },
+    async (req, reply) => {
+      const params = req.params as { id: string };
+      const body = req.body as { message?: string; agentName?: string };
 
-    if (!body?.message || typeof body.message !== 'string' || !body.message.trim()) {
-      return reply.status(400).send({ error: 'Bad Request: "message" text is required' });
-    }
+      if (!body?.message || typeof body.message !== 'string' || !body.message.trim()) {
+        return reply.status(400).send({ error: 'Bad Request: "message" text is required' });
+      }
 
-    const conversation = await platformRepo.getConversationById(params.id);
-    if (!conversation) {
-      return reply.status(404).send({ error: 'Conversation not found' });
-    }
+      const conversation = await platformRepo.getConversationById(params.id);
+      if (!conversation) {
+        return reply.status(404).send({ error: 'Conversation not found' });
+      }
 
-    const textToSend = body.message.trim();
-    const agentName = body.agentName || 'Customer Care Team';
+      const textToSend = body.message.trim();
+      const agentName = body.agentName || 'Customer Care Team';
 
-    const sendResult = await whatsappProvider.sendMessage({
-      type: 'text',
-      to: conversation.phoneNumber,
-      body: textToSend,
-    });
+      const sendResult = await whatsappProvider.sendMessage({
+        type: 'text',
+        to: conversation.phoneNumber,
+        body: textToSend,
+      });
 
-    const savedMessage = await platformRepo.appendMessage(
-      conversation.id,
-      conversation.phoneNumber,
-      'human_agent',
-      textToSend,
-    );
+      const savedMessage = await platformRepo.appendMessage(
+        conversation.id,
+        conversation.phoneNumber,
+        'human_agent',
+        textToSend,
+      );
 
-    return reply.status(200).send({
-      status: 'sent',
-      messageId: sendResult.messageId,
-      recipient: conversation.phoneNumber,
-      conversationId: conversation.id,
-      agentName,
-      message: savedMessage,
-    });
+      return reply.status(200).send({
+        status: 'sent',
+        messageId: sendResult.messageId,
+        recipient: conversation.phoneNumber,
+        conversationId: conversation.id,
+        agentName,
+        message: savedMessage,
+      });
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // 5.2 Live Agent Support Desk UI (Zero Meta OTP Friction)
+  // ---------------------------------------------------------------------------
+  app.get('/admin/support', async (_req, reply) => {
+    const html = renderSupportDashboardHtml(businessProfile.brand.name);
+    return reply.type('text/html').send(html);
+  });
+
+  app.get('/dashboard/support', async (_req, reply) => {
+    const html = renderSupportDashboardHtml(businessProfile.brand.name);
+    return reply.type('text/html').send(html);
   });
 
   app.get('/api/logistics/ndr', async (req, reply) => {
@@ -1123,7 +1323,9 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       const client = createEcommerceSupabaseClient();
       const { data, error } = await client
         .from('reviews')
-        .select('id, product_id, customer_id, customer_name, rating, title, comment, is_verified, created_at')
+        .select(
+          'id, product_id, customer_id, customer_name, rating, title, comment, is_verified, created_at',
+        )
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -1161,24 +1363,6 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   // ---------------------------------------------------------------------------
   // 9. DYNAMIC BUSINESS PROFILE & AI INGESTION (ChatGPT / Supabase Sync)
   // ---------------------------------------------------------------------------
-  const adminSecret =
-    config.ADMIN_API_KEY ||
-    (process.env.NODE_ENV === 'production' ? config.ECOMMERCE_WEBHOOK_SECRET : undefined);
-
-  const requireAdminAuth = async (req: FastifyRequest, reply: FastifyReply) => {
-    if (adminSecret) {
-      const authHeader = req.headers.authorization;
-      const customHeader = (req.headers['x-admin-key'] ||
-        req.headers['x-api-key'] ||
-        req.headers['x-webhook-secret']) as string | undefined;
-      const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : customHeader;
-
-      if (!token || token !== adminSecret) {
-        return reply.status(401).send({ error: 'Unauthorized: Invalid admin credentials' });
-      }
-    }
-  };
-
   app.post('/api/business/ingest', { preHandler: requireAdminAuth }, async (req, reply) => {
     const body = (req.body || {}) as {
       rawText?: string;
@@ -1222,7 +1406,9 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       });
     } catch (err: any) {
       req.log.error({ err }, 'Failed in /api/business/ingest');
-      return reply.status(500).send({ error: err.message || 'Failed synthesizing business profile' });
+      return reply
+        .status(500)
+        .send({ error: err.message || 'Failed synthesizing business profile' });
     }
   });
 

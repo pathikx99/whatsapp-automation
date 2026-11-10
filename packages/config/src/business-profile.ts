@@ -78,8 +78,7 @@ export const brandSchema = z
           links.instagramUrl || data.instagramUrl || 'https://instagram.com/mintarabites',
         googleReviewUrl:
           links.googleReviewUrl || data.googleReviewUrl || 'https://g.page/r/mintarabites/review',
-        supportEmail:
-          links.supportEmail || data.supportEmail || 'contact.mintarabites@gmail.com',
+        supportEmail: links.supportEmail || data.supportEmail || 'contact.mintarabites@gmail.com',
         supportPhone: links.supportPhone || data.supportPhone || '+91 7490095115',
       },
     };
@@ -168,9 +167,7 @@ export const navigationSchema = z.object({
   }),
   catalogBrowse: z
     .object({
-      header: z
-        .string()
-        .default('Here are our signature handcrafted artisanal mukhwas: 🌿'),
+      header: z.string().default('Here are our signature handcrafted artisanal mukhwas: 🌿'),
       footer: z
         .string()
         .default(
@@ -335,7 +332,9 @@ export const supportMessagesSchema = z.object({
     ),
 });
 
-export const businessTypeSchema = z.enum(['ecommerce', 'service', 'b2b', 'hybrid']).default('ecommerce');
+export const businessTypeSchema = z
+  .enum(['ecommerce', 'service', 'b2b', 'hybrid'])
+  .default('ecommerce');
 
 export const terminologySchema = z.object({
   itemNoun: z.string().default('treat'),
@@ -420,17 +419,13 @@ export const businessProfileSchema = z.object({
   promotions: promotionsSchema.default({ enabled: false, activePromo: null }),
   engagement: engagementSchema.default({}),
   navigation: navigationSchema.default({}),
-  quickButtons: z
-    .array(navigationButtonSchema)
-    .default([
-      { id: 'btn_browse_catalog', title: '🛒 Browse Treats' },
-      { id: 'btn_track_order', title: '📦 Track on Web' },
-    ]),
+  quickButtons: z.array(navigationButtonSchema).default([
+    { id: 'btn_browse_catalog', title: '🛒 Browse Treats' },
+    { id: 'btn_track_order', title: '📦 Track on Web' },
+  ]),
   catalogBrowse: z
     .object({
-      header: z
-        .string()
-        .default('Here are our signature handcrafted artisanal mukhwas: 🌿'),
+      header: z.string().default('Here are our signature handcrafted artisanal mukhwas: 🌿'),
       footer: z
         .string()
         .default(
@@ -514,9 +509,7 @@ export function loadBusinessKnowledge(forceReload = false): LoadedBusinessKnowle
   }
 
   const parseResult = businessProfileSchema.safeParse(profileData);
-  const profile = parseResult.success
-    ? parseResult.data
-    : businessProfileSchema.parse({});
+  const profile = parseResult.success ? parseResult.data : businessProfileSchema.parse({});
 
   // Ensure catalogBrowse syncs between navigation.catalogBrowse and root
   if (profile.navigation?.catalogBrowse) {
@@ -649,9 +642,28 @@ export function saveBusinessProfileToDisk(
 export function buildBusinessSystemPrompt(options: {
   customerContext?: string;
   productCatalogContext?: string;
+  activePromotion?: {
+    code: string;
+    description?: string;
+    discountType?: string;
+    discountValue?: number;
+    minOrderValue?: number;
+    terms?: string;
+  } | null;
 }): string {
   const { profile, customKnowledgeMarkdown } = loadBusinessKnowledge();
-  const { brand, persona, brandHighlights, faqs, knowledge, businessType, offerings, products, terminology, promotions } = profile;
+  const {
+    brand,
+    persona,
+    brandHighlights,
+    faqs,
+    knowledge,
+    businessType,
+    offerings,
+    products,
+    terminology,
+    promotions,
+  } = profile;
 
   const isService = businessType === 'service';
   const roleLabel = isService ? 'Services & Appointments' : 'Product Catalog';
@@ -668,19 +680,38 @@ export function buildBusinessSystemPrompt(options: {
 
   const policiesSection =
     knowledge?.policies && Object.keys(knowledge.policies).length > 0
-      ? `Brand Policies:\n${Object.entries(knowledge.policies).map(([k, v]) => `• ${k}: ${v}`).join('\n')}`
+      ? `Brand Policies:\n${Object.entries(knowledge.policies)
+          .map(([k, v]) => `• ${k}: ${v}`)
+          .join('\n')}`
       : '';
 
-  const promotionsSection =
-    promotions?.enabled && promotions?.activePromo
-      ? `ACTIVE STORE PROMOTION:
-• Promo Code: ${promotions.activePromo.code}
-• Offer: ${promotions.activePromo.description}
-${promotions.activePromo.discountPercentage ? `• Discount: ${promotions.activePromo.discountPercentage}% off\n` : ''}${promotions.activePromo.discountAmount ? `• Discount: ₹${promotions.activePromo.discountAmount} off\n` : ''}${promotions.activePromo.minOrderAmount ? `• Minimum Order Value: ₹${promotions.activePromo.minOrderAmount}\n` : ''}${promotions.activePromo.validUntil ? `• Expiry: ${promotions.activePromo.validUntil}\n` : ''}${promotions.activePromo.terms ? `• Terms: ${promotions.activePromo.terms}\n` : ''}INSTRUCTION: You MAY share this promo code with customers when they inquire about discounts, coupons, offers, or when finalizing an order.`
-      : `DISCOUNT & PROMO CODE POLICY:
-• STRICT RULE: Currently, there are NO active promo codes, coupon codes, or discount vouchers available in chat.
+  // Use dynamic activePromotion if explicitly provided (e.g. from website database), or fallback to profile.promotions
+  const verifiedPromo =
+    options.activePromotion !== undefined
+      ? options.activePromotion
+      : promotions?.enabled && promotions?.activePromo
+        ? {
+            code: promotions.activePromo.code,
+            description: promotions.activePromo.description,
+            discountType: promotions.activePromo.discountPercentage ? 'percentage' : 'fixed',
+            discountValue:
+              promotions.activePromo.discountPercentage ||
+              promotions.activePromo.discountAmount ||
+              0,
+            minOrderValue: promotions.activePromo.minOrderAmount,
+            terms: promotions.activePromo.terms,
+          }
+        : null;
+
+  const promotionsSection = verifiedPromo
+    ? `ACTIVE STORE PROMOTION:
+• Promo Code: ${verifiedPromo.code}
+• Offer: ${verifiedPromo.description || `${verifiedPromo.discountValue}${verifiedPromo.discountType === 'percentage' ? '%' : '₹'} off`}
+${verifiedPromo.discountValue ? `• Discount: ${verifiedPromo.discountValue}${verifiedPromo.discountType === 'percentage' ? '%' : '₹'} off\n` : ''}${verifiedPromo.minOrderValue ? `• Minimum Order Value: ₹${verifiedPromo.minOrderValue}\n` : ''}${verifiedPromo.terms ? `• Terms: ${verifiedPromo.terms}\n` : ''}INSTRUCTION: You MAY share this promo code with customers when they inquire about discounts, coupons, offers, or when finalizing an order.`
+    : `DISCOUNT & PROMO CODE POLICY:
+• STRICT RULE: Currently, there are NO active promo codes, coupon codes, or discount vouchers available in the store database.
 • NEVER invent, generate, or promise any discount codes, coupons, or special price cuts.
-• If a customer explicitly asks for a discount, coupon, or promo code, answer warmly and politely: explain that our treats are freshly handcrafted to order using 100% natural, premium ingredients (100% supari-free & tobacco-free) at honest direct pricing. You can also highlight that Pan-India express delivery is completely FREE on orders of ₹699 and above!`;
+• If a customer explicitly asks for a discount, coupon, or promo code, answer warmly and politely: explain that our products are freshly crafted using 100% natural, premium ingredients at honest direct pricing. You can also highlight that Pan-India express delivery is completely FREE on qualifying orders!`;
 
   const rulesSection =
     persona.rules.length > 0

@@ -7,7 +7,10 @@ import {
 } from '@whatsapp-platform/database';
 import { createWhatsAppProvider, OutboundWhatsAppMessage } from '@whatsapp-platform/whatsapp';
 import { MarketingOrchestrator } from '@whatsapp-platform/marketing-engine';
-import { generatePrefilledCheckoutUrl } from '@whatsapp-platform/ecommerce-adapter';
+import {
+  createEcommerceAdapter,
+  generatePrefilledCheckoutUrl,
+} from '@whatsapp-platform/ecommerce-adapter';
 
 const logger = createLogger({ name: 'worker' });
 
@@ -38,7 +41,13 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
           customerPhone: string;
           customerName?: string;
           orderNumber?: string;
-          items?: Array<{ name: string; quantity: number; sku?: string; unitPrice?: number; price?: number }>;
+          items?: Array<{
+            name: string;
+            quantity: number;
+            sku?: string;
+            unitPrice?: number;
+            price?: number;
+          }>;
           favoriteProduct?: string;
           estimatedDays?: number;
         };
@@ -46,15 +55,22 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
         const phone = payload.customerPhone;
         const name = payload.customerName || 'Friend';
         const favorite =
-          payload.favoriteProduct ||
-          payload.items?.[0]?.name ||
-          'Artisanal Paan Mukhwas (300g)';
+          payload.favoriteProduct || payload.items?.[0]?.name || 'Artisanal Paan Mukhwas (300g)';
 
         const rawItems = payload.items || [
-          { name: 'Artisanal Paan Mukhwas (300g)', quantity: 1, unitPrice: 249, sku: 'paan-mukhwas-300g' },
+          {
+            name: 'Artisanal Paan Mukhwas (300g)',
+            quantity: 1,
+            unitPrice: 249,
+            sku: 'paan-mukhwas-300g',
+          },
         ];
 
+        const ecommerceAdapter = createEcommerceAdapter();
+        const activePromo = await ecommerceAdapter.getActivePromotion().catch(() => null);
+
         // Format direct 1-click reorder checkout link prefilled with favorite treats
+        // ONLY attach verified promoCode if active in website DB; otherwise clean link with zero discount
         const reorderUrl = generatePrefilledCheckoutUrl(
           rawItems.map((i) => ({
             name: i.name,
@@ -62,6 +78,7 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
             unitPrice: i.unitPrice ?? i.price ?? 249,
             sku: i.sku || i.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
           })),
+          activePromo?.code,
         );
 
         const profile = getBusinessProfile();
@@ -82,10 +99,8 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
             `👉 *Tap to reorder your favorites in 1 click:*\n${reorderUrl}`;
         }
 
-        const reorderBtnTitle =
-          profile.terminology?.reorderButtonTitle || '🔄 Reorder Favorites';
-        const browseBtnTitle =
-          profile.terminology?.browseButtonTitle || '🛒 Browse Treats';
+        const reorderBtnTitle = profile.terminology?.reorderButtonTitle || '🔄 Reorder Favorites';
+        const browseBtnTitle = profile.terminology?.browseButtonTitle || '🛒 Browse Treats';
 
         await whatsappProvider.sendMessage({
           type: 'interactive',

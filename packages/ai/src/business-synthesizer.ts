@@ -1,8 +1,5 @@
 import { createLogger } from '@whatsapp-platform/shared';
-import {
-  businessProfileSchema,
-  BusinessProfile,
-} from '@whatsapp-platform/config';
+import { businessProfileSchema, BusinessProfile } from '@whatsapp-platform/config';
 import { createAiProvider } from './index.js';
 
 const logger = createLogger({ name: 'business-synthesizer' });
@@ -52,9 +49,15 @@ export function buildDeterministicBusinessProfile(
   // 2. Extract Brand Name
   let brandName = hints.brandName;
   if (!brandName) {
-    const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+    const lines = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
     if (lines.length > 0 && lines[0]) {
-      const candidate = lines[0].replace(/^[#*-•\s]+/, '').replace(/^(welcome to|about|profile of)\s+/i, '').trim();
+      const candidate = lines[0]
+        .replace(/^[#*-•\s]+/, '')
+        .replace(/^(welcome to|about|profile of)\s+/i, '')
+        .trim();
       if (candidate.length > 2 && candidate.length < 60) {
         brandName = candidate;
       }
@@ -123,7 +126,8 @@ export function buildDeterministicBusinessProfile(
           type: detectedType === 'service' ? 'service' : 'product',
           price: meta.startsWith('₹') ? meta : `₹${meta.replace(/\D/g, '') || '199'}`,
           description: desc,
-          requiresRefrigeration: lower.includes('refrigerat') && title.toLowerCase().includes('paan'),
+          requiresRefrigeration:
+            lower.includes('refrigerat') && title.toLowerCase().includes('paan'),
           url: `${websiteBase}/products/${slug}`,
           checkoutUrl: `${websiteBase}/products/${slug}`,
           bookingUrl: detectedType === 'service' ? `${websiteBase}/book` : undefined,
@@ -293,8 +297,7 @@ ${rawKnowledge}`;
 
     const content = response.content.trim();
     const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    let jsonString =
-      codeBlockMatch && codeBlockMatch[1] ? codeBlockMatch[1].trim() : content;
+    let jsonString = codeBlockMatch && codeBlockMatch[1] ? codeBlockMatch[1].trim() : content;
     const firstBrace = jsonString.indexOf('{');
     const lastBrace = jsonString.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -319,7 +322,10 @@ ${rawKnowledge}`;
       if (rawBrandName) {
         parsedJson.brand.name = rawBrandName;
       } else {
-        const firstLine = rawKnowledge.split('\n').map((l) => l.trim()).find((l) => l.length > 2);
+        const firstLine = rawKnowledge
+          .split('\n')
+          .map((l) => l.trim())
+          .find((l) => l.length > 2);
         if (firstLine) {
           parsedJson.brand.name = firstLine.replace(/^[#*-•\s]+/, '').trim();
         }
@@ -332,7 +338,7 @@ ${rawKnowledge}`;
           title: o.title || o.name || 'Signature Item',
           price: typeof o.price === 'number' ? `₹${o.price}` : String(o.price || '₹199'),
           category: o.category || 'General',
-          type: parsedJson.businessType === 'service' ? 'service' : (o.type || 'product'),
+          type: parsedJson.businessType === 'service' ? 'service' : o.type || 'product',
           description: o.description || '',
           url: o.url || (o.checkoutUrl ? o.checkoutUrl : undefined),
         }));
@@ -380,7 +386,10 @@ ${rawKnowledge}`;
     }
 
     const validated = businessProfileSchema.parse(parsedJson);
-    logger.info({ brand: validated.brand.name, type: validated.businessType }, 'Successfully synthesized business profile via AI');
+    logger.info(
+      { brand: validated.brand.name, type: validated.businessType },
+      'Successfully synthesized business profile via AI',
+    );
     return validated;
   } catch (err) {
     logger.warn({ err }, 'Failed synthesizing via Gemini, falling back to deterministic synthesis');

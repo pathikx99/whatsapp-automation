@@ -5,10 +5,7 @@ import { resetConfigCache } from '@whatsapp-platform/config';
 import { getPlatformRepository } from '@whatsapp-platform/database';
 import { SupportOrchestrator } from '../../apps/support-engine/src/orchestrator.js';
 import { processSingleJob } from '../../apps/worker/src/index.js';
-import {
-  WhatsAppProvider,
-  OutboundWhatsAppMessage,
-} from '@whatsapp-platform/whatsapp';
+import { WhatsAppProvider, OutboundWhatsAppMessage } from '@whatsapp-platform/whatsapp';
 
 describe('Post-Purchase Journey & Courier Integrations', () => {
   let app: FastifyInstance;
@@ -188,9 +185,7 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
 
       // Query scheduled jobs for this customer
       const jobs = await platformRepo.fetchScheduledJobs('csat_review_prompt', 50);
-      const csatJob = jobs.find(
-        (j) => (j.payload as any).customerPhone === targetPhone,
-      );
+      const csatJob = jobs.find((j) => (j.payload as any).customerPhone === targetPhone);
 
       expect(csatJob).toBeDefined();
       expect((csatJob?.payload as any).orderNumber).toBe(orderNumber);
@@ -271,7 +266,12 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
         isConfigured: () => true,
         sendMessage: vi.fn().mockImplementation(async (msg: OutboundWhatsAppMessage) => {
           sentMessages.push(msg);
-          return { messageId: 'msg_ndr_btn', status: 'sent', recipient: msg.to, timestamp: new Date().toISOString() };
+          return {
+            messageId: 'msg_ndr_btn',
+            status: 'sent',
+            recipient: msg.to,
+            timestamp: new Date().toISOString(),
+          };
         }),
         sendInteractiveButtons: vi.fn(),
         sendProduct: vi.fn(),
@@ -303,7 +303,12 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
         isConfigured: () => true,
         sendMessage: vi.fn().mockImplementation(async (msg: OutboundWhatsAppMessage) => {
           sentMessages.push(msg);
-          return { messageId: 'msg_landmark_reply', status: 'sent', recipient: msg.to, timestamp: new Date().toISOString() };
+          return {
+            messageId: 'msg_landmark_reply',
+            status: 'sent',
+            recipient: msg.to,
+            timestamp: new Date().toISOString(),
+          };
         }),
         sendInteractiveButtons: vi.fn(),
         sendProduct: vi.fn(),
@@ -318,7 +323,8 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
       });
 
       // Customer responds with landmark
-      const landmarkText = 'My house is opposite Krishna Temple, 2nd floor, House #42, please call before delivery';
+      const landmarkText =
+        'My house is opposite Krishna Temple, 2nd floor, House #42, please call before delivery';
       const result = await orchestrator.processMessage({
         from: '919876543260',
         messageId: 'msg_customer_landmark_reply',
@@ -339,7 +345,14 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
     it('should handle "Re-attempt" button and update status', async () => {
       const mockWhatsApp: WhatsAppProvider = {
         isConfigured: () => true,
-        sendMessage: vi.fn().mockResolvedValue({ messageId: 'msg_reattempt', status: 'sent', recipient: '919876543260', timestamp: new Date().toISOString() }),
+        sendMessage: vi
+          .fn()
+          .mockResolvedValue({
+            messageId: 'msg_reattempt',
+            status: 'sent',
+            recipient: '919876543260',
+            timestamp: new Date().toISOString(),
+          }),
         sendInteractiveButtons: vi.fn(),
         sendProduct: vi.fn(),
         sendProductList: vi.fn(),
@@ -391,7 +404,12 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
         isConfigured: () => true,
         sendMessage: vi.fn().mockImplementation(async (msg: OutboundWhatsAppMessage) => {
           sentMessages.push(msg);
-          return { messageId: 'msg_5_star', status: 'sent', recipient: msg.to, timestamp: new Date().toISOString() };
+          return {
+            messageId: 'msg_5_star',
+            status: 'sent',
+            recipient: msg.to,
+            timestamp: new Date().toISOString(),
+          };
         }),
         sendInteractiveButtons: vi.fn(),
         sendProduct: vi.fn(),
@@ -431,7 +449,12 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
         isConfigured: () => true,
         sendMessage: vi.fn().mockImplementation(async (msg: OutboundWhatsAppMessage) => {
           sentMessages.push(msg);
-          return { messageId: 'msg_low_star', status: 'sent', recipient: msg.to, timestamp: new Date().toISOString() };
+          return {
+            messageId: 'msg_low_star',
+            status: 'sent',
+            recipient: msg.to,
+            timestamp: new Date().toISOString(),
+          };
         }),
         sendInteractiveButtons: vi.fn(),
         sendProduct: vi.fn(),
@@ -481,7 +504,12 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
         isConfigured: () => true,
         sendMessage: vi.fn().mockImplementation(async (msg: OutboundWhatsAppMessage) => {
           sentMessages.push(msg);
-          return { messageId: 'msg_4_star', status: 'sent', recipient: msg.to, timestamp: new Date().toISOString() };
+          return {
+            messageId: 'msg_4_star',
+            status: 'sent',
+            recipient: msg.to,
+            timestamp: new Date().toISOString(),
+          };
         }),
         sendInteractiveButtons: vi.fn(),
         sendProduct: vi.fn(),

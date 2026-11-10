@@ -98,7 +98,11 @@ describe('New Features & Improvements (Typing, Multimodal, Lists, Idempotency, L
           {
             title: 'Seeds & Crunch',
             rows: [
-              { id: 'btn_size_seeds_100g', title: 'Seeds 100g', description: 'Digestive Seeds • ₹149' },
+              {
+                id: 'btn_size_seeds_100g',
+                title: 'Seeds 100g',
+                description: 'Digestive Seeds • ₹149',
+              },
             ],
           },
         ],
@@ -297,7 +301,7 @@ describe('New Features & Improvements (Typing, Multimodal, Lists, Idempotency, L
 
       expect(res).toBeDefined();
       expect(res.content).toBeDefined();
-    }, 20000);
+    }, 35000);
   });
 
   describe('8. Link Authenticity & Configurable Promotions System', () => {
@@ -320,7 +324,8 @@ describe('New Features & Improvements (Typing, Multimodal, Lists, Idempotency, L
     });
 
     it('should dynamically inject active promo code and terms when promotions are enabled', async () => {
-      const { buildBusinessSystemPrompt, loadBusinessKnowledge } = await import('@whatsapp-platform/config');
+      const { buildBusinessSystemPrompt, loadBusinessKnowledge } =
+        await import('@whatsapp-platform/config');
       const loaded = loadBusinessKnowledge();
       const originalPromo = loaded.profile.promotions;
 

@@ -33,8 +33,16 @@ describe('Business Directory Hub & Service-Agnostic Architecture', () => {
 
     // Verify examples exist
     const serviceExamplePath = path.join(businessDir, 'examples', 'service-business-profile.json');
-    const serviceKnowledgePath = path.join(businessDir, 'examples', 'service-business-knowledge.md');
-    const ecommerceExamplePath = path.join(businessDir, 'examples', 'ecommerce-business-profile.json');
+    const serviceKnowledgePath = path.join(
+      businessDir,
+      'examples',
+      'service-business-knowledge.md',
+    );
+    const ecommerceExamplePath = path.join(
+      businessDir,
+      'examples',
+      'ecommerce-business-profile.json',
+    );
 
     expect(fs.existsSync(serviceExamplePath)).toBe(true);
     expect(fs.existsSync(serviceKnowledgePath)).toBe(true);
@@ -54,7 +62,12 @@ describe('Business Directory Hub & Service-Agnostic Architecture', () => {
   });
 
   it('should seamlessly validate and load a Service-Based Business profile', () => {
-    const serviceExamplePath = path.join(rootDir, 'business', 'examples', 'service-business-profile.json');
+    const serviceExamplePath = path.join(
+      rootDir,
+      'business',
+      'examples',
+      'service-business-profile.json',
+    );
     const serviceRaw = fs.readFileSync(serviceExamplePath, 'utf8');
     const serviceJson = JSON.parse(serviceRaw);
 
@@ -76,7 +89,12 @@ describe('Business Directory Hub & Service-Agnostic Architecture', () => {
   });
 
   it('should dynamically generate AI system prompt tailored for a Service Practice', () => {
-    const serviceExamplePath = path.join(rootDir, 'business', 'examples', 'service-business-profile.json');
+    const serviceExamplePath = path.join(
+      rootDir,
+      'business',
+      'examples',
+      'service-business-profile.json',
+    );
     process.env.BUSINESS_PROFILE_PATH = path.relative(rootDir, serviceExamplePath);
     resetBusinessKnowledgeCache();
 
@@ -97,7 +115,12 @@ describe('Business Directory Hub & Service-Agnostic Architecture', () => {
   });
 
   it('should handle service selection and dispatch booking links when running as a Service Business', async () => {
-    const serviceExamplePath = path.join(rootDir, 'business', 'examples', 'service-business-profile.json');
+    const serviceExamplePath = path.join(
+      rootDir,
+      'business',
+      'examples',
+      'service-business-profile.json',
+    );
     const serviceRaw = fs.readFileSync(serviceExamplePath, 'utf8');
     const serviceProfile = businessProfileSchema.parse(JSON.parse(serviceRaw));
 
@@ -106,7 +129,12 @@ describe('Business Directory Hub & Service-Agnostic Architecture', () => {
       isConfigured: () => true,
       sendMessage: vi.fn().mockImplementation(async (msg: OutboundWhatsAppMessage) => {
         sentMessages.push(msg);
-        return { messageId: 'msg_service_booking', status: 'sent', recipient: msg.to, timestamp: new Date().toISOString() };
+        return {
+          messageId: 'msg_service_booking',
+          status: 'sent',
+          recipient: msg.to,
+          timestamp: new Date().toISOString(),
+        };
       }),
       sendInteractiveButtons: vi.fn(),
       sendProduct: vi.fn(),
@@ -152,7 +180,12 @@ describe('Business Directory Hub & Service-Agnostic Architecture', () => {
   });
 
   it('should correctly format appointment and service aftercare notification templates', () => {
-    const serviceExamplePath = path.join(rootDir, 'business', 'examples', 'service-business-profile.json');
+    const serviceExamplePath = path.join(
+      rootDir,
+      'business',
+      'examples',
+      'service-business-profile.json',
+    );
     const serviceRaw = fs.readFileSync(serviceExamplePath, 'utf8');
     const serviceProfile = businessProfileSchema.parse(JSON.parse(serviceRaw));
 
@@ -180,7 +213,7 @@ describe('Business Directory Hub & Service-Agnostic Architecture', () => {
       orderNumber: 'APT-904',
       reason: 'Patient called with urgent meeting conflict',
     });
-    expect(missedMsg).toContain('couldn\'t make it to your scheduled session');
+    expect(missedMsg).toContain("couldn't make it to your scheduled session");
     expect(missedMsg).toContain('reschedule to another convenient date');
   });
 });

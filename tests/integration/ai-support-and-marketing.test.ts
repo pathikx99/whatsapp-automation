@@ -35,6 +35,10 @@ describe('AI Support and Delivery Status Guardrails', () => {
   const adapter = createEcommerceAdapter();
   const platformRepo = getPlatformRepository();
 
+  beforeAll(async () => {
+    await platformRepo.updateConversationStatus('917490095115', 'active');
+  });
+
   it('should successfully read active products without modifying the database', async () => {
     const products = await adapter.getAllActiveProducts();
     expect(products.length).toBeGreaterThan(0);
@@ -104,11 +108,15 @@ describe('AI Support and Delivery Status Guardrails', () => {
     const profile = getBusinessProfile();
     expect(profile.quickButtons.some((b) => b.id === 'btn_talk_human')).toBe(false);
     expect(profile.quickButtons.length).toBeGreaterThanOrEqual(2);
-    expect(profile.quickButtons.map((b) => b.id)).toEqual(['btn_browse_catalog', 'btn_track_order']);
+    expect(profile.quickButtons.map((b) => b.id)).toEqual([
+      'btn_browse_catalog',
+      'btn_track_order',
+    ]);
   });
 
   it('should verify formatTemplate safely replaces direct and nested variables', () => {
-    const template = 'Hi {{customerName}}! Order #{{orderNumber}} from {{brand.name}}. Total: ₹{{total}}';
+    const template =
+      'Hi {{customerName}}! Order #{{orderNumber}} from {{brand.name}}. Total: ₹{{total}}';
     const output = formatTemplate(template, {
       customerName: 'Aarav',
       orderNumber: 'MB-5001',

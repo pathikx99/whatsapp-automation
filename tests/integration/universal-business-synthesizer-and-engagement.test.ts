@@ -42,7 +42,9 @@ describe('Universal AI Business Synthesizer, Direct Links & Customer Engagement'
 
       expect(response.action).toBe('answered');
       expect(response.checkoutUrl).toBeDefined();
-      expect(response.checkoutUrl).toContain('https://mintarabites.com/products/artisanal-paan-mukhwas');
+      expect(response.checkoutUrl).toContain(
+        'https://mintarabites.com/products/artisanal-paan-mukhwas',
+      );
       expect(response.checkoutUrl).toContain('paan-mukhwas-300g');
 
       // Verify dispatched message provides direct product link
@@ -119,7 +121,9 @@ describe('Universal AI Business Synthesizer, Direct Links & Customer Engagement'
       });
 
       expect(profile.businessType).toBe('service');
-      expect(['service', 'treatment', 'consultation']).toContain(profile.terminology.itemNoun.toLowerCase());
+      expect(['service', 'treatment', 'consultation']).toContain(
+        profile.terminology.itemNoun.toLowerCase(),
+      );
       expect(profile.terminology.actionVerb.toLowerCase()).toBe('book');
       expect(profile.terminology.browseButtonTitle.length).toBeGreaterThan(0);
       expect(profile.offerings.length).toBeGreaterThanOrEqual(2);
@@ -244,7 +248,12 @@ describe('Universal AI Business Synthesizer, Direct Links & Customer Engagement'
       const testPhone = '9199' + Math.floor(10000000 + Math.random() * 90000000);
       const conv = await platformRepo.getOrCreateConversation(testPhone, 'Rahul Sharma');
       await platformRepo.appendMessage(conv.id, testPhone, 'customer', 'Hi there!');
-      await platformRepo.appendMessage(conv.id, testPhone, 'assistant', 'Hello Rahul! How can I help?');
+      await platformRepo.appendMessage(
+        conv.id,
+        testPhone,
+        'assistant',
+        'Hello Rahul! How can I help?',
+      );
       await platformRepo.appendMessage(conv.id, testPhone, 'customer', 'Do you deliver to Delhi?');
 
       const stats = await platformRepo.getCustomerMessageStats(testPhone);

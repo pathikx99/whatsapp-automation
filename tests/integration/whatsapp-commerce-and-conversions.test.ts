@@ -6,13 +6,8 @@ import { resetConfigCache } from '@whatsapp-platform/config';
 import { getPlatformRepository } from '@whatsapp-platform/database';
 import { SupportOrchestrator } from '../../apps/support-engine/src/orchestrator.js';
 import { processSingleJob } from '../../apps/worker/src/index.js';
-import {
-  WhatsAppProvider,
-  OutboundWhatsAppMessage,
-} from '@whatsapp-platform/whatsapp';
-import {
-  calculateConsumptionVelocity,
-} from '@whatsapp-platform/ecommerce-adapter';
+import { WhatsAppProvider, OutboundWhatsAppMessage } from '@whatsapp-platform/whatsapp';
+import { calculateConsumptionVelocity } from '@whatsapp-platform/ecommerce-adapter';
 
 describe('WhatsApp Commerce, Replenishment, Abandoned Cart & CTWA Attribution', () => {
   let app: FastifyInstance;
@@ -88,41 +83,45 @@ describe('WhatsApp Commerce, Replenishment, Abandoned Cart & CTWA Attribution', 
           };
         }),
         sendInteractiveButtons: vi.fn(),
-        sendProduct: vi.fn().mockImplementation(async (to, catalogId, productRetailerId, body, footer) => {
-          const msg: OutboundWhatsAppMessage = {
-            type: 'product',
-            to,
-            catalogId,
-            productRetailerId,
-            body,
-            footer,
-          };
-          sentMessages.push(msg);
-          return {
-            messageId: 'mock_msg_single_product',
-            status: 'sent',
-            recipient: to,
-            timestamp: new Date().toISOString(),
-          };
-        }),
-        sendProductList: vi.fn().mockImplementation(async (to, catalogId, headerText, body, sections, footer) => {
-          const msg: OutboundWhatsAppMessage = {
-            type: 'product_list',
-            to,
-            catalogId,
-            headerText,
-            body,
-            sections,
-            footer,
-          };
-          sentMessages.push(msg);
-          return {
-            messageId: 'mock_msg_product_list',
-            status: 'sent',
-            recipient: to,
-            timestamp: new Date().toISOString(),
-          };
-        }),
+        sendProduct: vi
+          .fn()
+          .mockImplementation(async (to, catalogId, productRetailerId, body, footer) => {
+            const msg: OutboundWhatsAppMessage = {
+              type: 'product',
+              to,
+              catalogId,
+              productRetailerId,
+              body,
+              footer,
+            };
+            sentMessages.push(msg);
+            return {
+              messageId: 'mock_msg_single_product',
+              status: 'sent',
+              recipient: to,
+              timestamp: new Date().toISOString(),
+            };
+          }),
+        sendProductList: vi
+          .fn()
+          .mockImplementation(async (to, catalogId, headerText, body, sections, footer) => {
+            const msg: OutboundWhatsAppMessage = {
+              type: 'product_list',
+              to,
+              catalogId,
+              headerText,
+              body,
+              sections,
+              footer,
+            };
+            sentMessages.push(msg);
+            return {
+              messageId: 'mock_msg_product_list',
+              status: 'sent',
+              recipient: to,
+              timestamp: new Date().toISOString(),
+            };
+          }),
         verifyWebhook: () => true,
       };
 

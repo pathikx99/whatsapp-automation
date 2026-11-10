@@ -211,6 +211,9 @@ importers:
       '@whatsapp-platform/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@whatsapp-platform/ecommerce-adapter':
+        specifier: workspace:*
+        version: link:../../packages/ecommerce-adapter
       '@whatsapp-platform/marketing-engine':
         specifier: workspace:*
         version: link:../marketing-engine

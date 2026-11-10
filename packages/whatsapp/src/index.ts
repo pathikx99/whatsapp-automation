@@ -9,13 +9,7 @@ try {
 }
 
 export type WhatsAppMessageType =
-  | 'text'
-  | 'template'
-  | 'interactive'
-  | 'media'
-  | 'product'
-  | 'product_list'
-  | 'list';
+  'text' | 'template' | 'interactive' | 'media' | 'product' | 'product_list' | 'list';
 
 export interface WhatsAppButtonAction {
   id: string;
@@ -180,7 +174,10 @@ export function createWhatsAppProvider(): WhatsAppProvider {
       );
 
       try {
-        const cleanTo = message.to.replace(/\D/g, '');
+        let cleanTo = message.to.replace(/\D/g, '');
+        if (cleanTo.length === 10 && /^[6-9]/.test(cleanTo)) {
+          cleanTo = `91${cleanTo}`;
+        }
         const payload: Record<string, unknown> = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
@@ -200,9 +197,11 @@ export function createWhatsAppProvider(): WhatsAppProvider {
           };
         } else if (message.type === 'interactive') {
           payload.type = 'interactive';
+          const interactiveBody =
+            message.body.length > 1024 ? message.body.slice(0, 1020) + '...' : message.body;
           payload.interactive = {
             type: 'button',
-            body: { text: message.body },
+            body: { text: interactiveBody },
             action: {
               buttons: message.buttons.slice(0, 3).map((btn) => ({
                 type: 'reply',
@@ -263,10 +262,12 @@ export function createWhatsAppProvider(): WhatsAppProvider {
           };
         } else if (message.type === 'list') {
           payload.type = 'interactive';
+          const listBody =
+            message.body.length > 1024 ? message.body.slice(0, 1020) + '...' : message.body;
           payload.interactive = {
             type: 'list',
             header: message.header ? { type: 'text', text: message.header } : undefined,
-            body: { text: message.body },
+            body: { text: listBody },
             footer: message.footer ? { text: message.footer } : undefined,
             action: {
               button: (message.buttonText || 'View Options').slice(0, 20),
@@ -392,7 +393,12 @@ export function createWhatsAppProvider(): WhatsAppProvider {
         (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST)) &&
         process.env.LIVE_WHATSAPP_TEST !== 'true';
 
-      if (!isConfigured || isTestEnv || messageId.startsWith('mock_') || messageId.startsWith('wamid_test')) {
+      if (
+        !isConfigured ||
+        isTestEnv ||
+        messageId.startsWith('mock_') ||
+        messageId.startsWith('wamid_test')
+      ) {
         logger.debug({ messageId }, 'WhatsApp provider mock: marked message as read');
         return true;
       }
@@ -460,8 +466,7 @@ export function createWhatsAppProvider(): WhatsAppProvider {
         mediaId.startsWith('media_test')
       ) {
         // Return a valid silent 44-byte WAV header for testing
-        const silentWavBase64 =
-          'UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+        const silentWavBase64 = 'UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
         return {
           buffer: Buffer.from(silentWavBase64, 'base64'),
           mimeType: 'audio/wav',

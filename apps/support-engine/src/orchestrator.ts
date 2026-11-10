@@ -63,12 +63,7 @@ export interface IncomingMessagePayload {
 
 export interface SupportResolutionResult {
   action:
-    | 'answered'
-    | 'escalated'
-    | 'delivery_redirect'
-    | 'ignored'
-    | 'escalated_muted'
-    | 'rate_limited';
+    'answered' | 'escalated' | 'delivery_redirect' | 'ignored' | 'escalated_muted' | 'rate_limited';
   responseText?: string;
   customerIdentified: boolean;
   customerId?: string;
@@ -239,12 +234,7 @@ export class SupportOrchestrator {
       buttons: [resumeButton],
     });
 
-    await this.platformRepo.appendMessage(
-      conversationId,
-      fromPhone,
-      'assistant',
-      customerNotice,
-    );
+    await this.platformRepo.appendMessage(conversationId, fromPhone, 'assistant', customerNotice);
 
     return {
       action: 'escalated',
@@ -568,7 +558,12 @@ export class SupportOrchestrator {
         ],
       });
 
-      await this.platformRepo.appendMessage(conversation.id, fromPhone, 'assistant', askLandmarkMsg);
+      await this.platformRepo.appendMessage(
+        conversation.id,
+        fromPhone,
+        'assistant',
+        askLandmarkMsg,
+      );
 
       return {
         action: 'answered',
@@ -682,11 +677,9 @@ export class SupportOrchestrator {
       });
 
       const googleUrl =
-        this.businessProfile.brand.links?.googleReviewUrl ||
-        'https://g.page/r/mintarabites/review';
+        this.businessProfile.brand.links?.googleReviewUrl || 'https://g.page/r/mintarabites/review';
       const instaUrl =
-        this.businessProfile.brand.links?.instagramUrl ||
-        'https://instagram.com/mintarabites';
+        this.businessProfile.brand.links?.instagramUrl || 'https://instagram.com/mintarabites';
 
       const fiveStarMsg =
         `Thank you so much for the 5-star rating, ${customerName}! 🌟 It means the world to our small artisanal team in Surat.\n\n` +
@@ -758,11 +751,9 @@ export class SupportOrchestrator {
       });
 
       const googleUrl =
-        this.businessProfile.brand.links?.googleReviewUrl ||
-        'https://g.page/r/mintarabites/review';
+        this.businessProfile.brand.links?.googleReviewUrl || 'https://g.page/r/mintarabites/review';
       const instaUrl =
-        this.businessProfile.brand.links?.instagramUrl ||
-        'https://instagram.com/mintarabites';
+        this.businessProfile.brand.links?.instagramUrl || 'https://instagram.com/mintarabites';
 
       const fourStarMsg =
         `Thank you for your 4-star feedback, ${customerName}! ✨ We're glad you enjoyed your treats.\n\n` +
@@ -1000,7 +991,14 @@ export class SupportOrchestrator {
       const checkoutUrl =
         selectedPack.url ||
         generatePrefilledCheckoutUrl(
-          [{ name: `${selectedPack.name} (${selectedPack.size})`, quantity: 1, unitPrice: selectedPack.price, sku: selectedPack.sku }],
+          [
+            {
+              name: `${selectedPack.name} (${selectedPack.size})`,
+              quantity: 1,
+              unitPrice: selectedPack.price,
+              sku: selectedPack.sku,
+            },
+          ],
           undefined,
           this.businessProfile.brand.links?.websiteUrl || this.businessProfile.brand.websiteUrl,
         );
@@ -1053,12 +1051,14 @@ export class SupportOrchestrator {
       /\b(reorder my favorites|reorder favorites|repeat order|reorder)\b/i.test(rawText)
     ) {
       const prediction = calculateConsumptionVelocity(pastOrders, {
-        websiteUrl: this.businessProfile.brand.links?.websiteUrl || this.businessProfile.brand.websiteUrl,
+        websiteUrl:
+          this.businessProfile.brand.links?.websiteUrl || this.businessProfile.brand.websiteUrl,
       });
 
-      const itemsList = prediction.recommendedItems
-        .map((i) => `• ${i.name} (${i.quantity}x) - ₹${i.unitPrice * i.quantity}`)
-        .join('\n') || `• ${prediction.favoriteProduct} (1x) - ₹249`;
+      const itemsList =
+        prediction.recommendedItems
+          .map((i) => `• ${i.name} (${i.quantity}x) - ₹${i.unitPrice * i.quantity}`)
+          .join('\n') || `• ${prediction.favoriteProduct} (1x) - ₹249`;
 
       const reorderMsg =
         `🔄 *1-Click Reorder: Your Mintara Favorites*\n\n` +
@@ -1097,24 +1097,50 @@ export class SupportOrchestrator {
         const sku = item.productRetailerId;
         let name = sku;
         let price = item.itemPrice || 249;
-        if (sku.includes('paan-mukhwas-150g')) { name = 'Artisanal Paan Mukhwas (150g)'; price = 149; }
-        else if (sku.includes('paan-mukhwas-300g')) { name = 'Artisanal Paan Mukhwas (300g)'; price = 249; }
-        else if (sku.includes('paan-mukhwas-500g')) { name = 'Artisanal Paan Mukhwas (500g)'; price = 399; }
-        else if (sku.includes('seeds-fusion')) { name = 'Seeds Fusion'; price = 149; }
-        else if (sku.includes('coconut-crunch')) { name = 'Coconut Crunch'; price = 149; }
-        else if (sku.includes('combo-trio')) { name = 'Mintara Trio Pack (350g)'; price = 399; }
-        else if (sku.includes('combo-family')) { name = 'Family Feast Pack (700g)'; price = 699; }
+        if (sku.includes('paan-mukhwas-150g')) {
+          name = 'Artisanal Paan Mukhwas (150g)';
+          price = 149;
+        } else if (sku.includes('paan-mukhwas-300g')) {
+          name = 'Artisanal Paan Mukhwas (300g)';
+          price = 249;
+        } else if (sku.includes('paan-mukhwas-500g')) {
+          name = 'Artisanal Paan Mukhwas (500g)';
+          price = 399;
+        } else if (sku.includes('seeds-fusion')) {
+          name = 'Seeds Fusion';
+          price = 149;
+        } else if (sku.includes('coconut-crunch')) {
+          name = 'Coconut Crunch';
+          price = 149;
+        } else if (sku.includes('combo-trio')) {
+          name = 'Mintara Trio Pack (350g)';
+          price = 399;
+        } else if (sku.includes('combo-family')) {
+          name = 'Family Feast Pack (700g)';
+          price = 699;
+        }
         return { name, sku, quantity: item.quantity, unitPrice: price };
       });
 
-      const finalItems = mappedItems.length > 0 ? mappedItems : [
-        { name: 'Artisanal Paan Mukhwas (300g)', sku: 'paan-mukhwas-300g', quantity: 1, unitPrice: 249 },
-      ];
+      const finalItems =
+        mappedItems.length > 0
+          ? mappedItems
+          : [
+              {
+                name: 'Artisanal Paan Mukhwas (300g)',
+                sku: 'paan-mukhwas-300g',
+                quantity: 1,
+                unitPrice: 249,
+              },
+            ];
 
+      const dbPromo = await this.ecommerceAdapter.getActivePromotion().catch(() => null);
       const activePromoCode =
-        this.businessProfile.promotions?.enabled && this.businessProfile.promotions?.activePromo?.code
+        dbPromo?.code ||
+        (this.businessProfile.promotions?.enabled &&
+        this.businessProfile.promotions?.activePromo?.code
           ? this.businessProfile.promotions.activePromo.code
-          : undefined;
+          : undefined);
 
       const checkoutUrl = generatePrefilledCheckoutUrl(
         finalItems,
@@ -1200,14 +1226,31 @@ export class SupportOrchestrator {
     if (recentWebsiteReviews.length > 0) {
       const topReviewsStr = recentWebsiteReviews
         .slice(0, 4)
-        .map((r) => `• "${r.title ? `${r.title} - ` : ''}${r.comment}" — ${r.customerName} (${r.rating}/5 ⭐)`)
+        .map(
+          (r) =>
+            `• "${r.title ? `${r.title} - ` : ''}${r.comment}" — ${r.customerName} (${r.rating}/5 ⭐)`,
+        )
         .join('\n');
       customerContextStr += `\n\nRecent Customer Testimonials from Website:\n${topReviewsStr}`;
     }
 
+    const activePromo =
+      typeof this.ecommerceAdapter?.getActivePromotion === 'function'
+        ? await this.ecommerceAdapter.getActivePromotion().catch(() => null)
+        : null;
     const systemPrompt = buildBusinessSystemPrompt({
       customerContext: customerContextStr,
       productCatalogContext,
+      activePromotion: activePromo
+        ? {
+            code: activePromo.code,
+            description: `${activePromo.discountValue}${activePromo.discountType === 'percentage' ? '%' : '₹'} off`,
+            discountType: activePromo.discountType,
+            discountValue: activePromo.discountValue,
+            minOrderValue: activePromo.minOrderValue,
+            terms: activePromo.terms,
+          }
+        : null,
     });
 
     // Load recent multi-turn conversation messages
@@ -1308,12 +1351,30 @@ export class SupportOrchestrator {
       }
 
       // Normal AI response dispatch via WhatsApp with interactive quick reply buttons
-      await this.whatsappProvider.sendMessage({
-        type: 'interactive',
-        to: fromPhone,
-        body: replyText,
-        buttons: this.defaultButtons,
-      });
+      if (replyText.length <= 1000) {
+        await this.whatsappProvider.sendMessage({
+          type: 'interactive',
+          to: fromPhone,
+          body: replyText,
+          buttons: this.defaultButtons,
+        });
+      } else {
+        // WhatsApp interactive body limit is 1024 characters; dispatch full text response followed by interactive buttons
+        await this.whatsappProvider.sendMessage({
+          type: 'text',
+          to: fromPhone,
+          body: replyText,
+        });
+
+        if (this.defaultButtons && this.defaultButtons.length > 0) {
+          await this.whatsappProvider.sendMessage({
+            type: 'interactive',
+            to: fromPhone,
+            body: 'How else may I help you today? ✨',
+            buttons: this.defaultButtons,
+          });
+        }
+      }
 
       // Save AI reply to conversation history
       await this.platformRepo.appendMessage(conversation.id, fromPhone, 'assistant', replyText);

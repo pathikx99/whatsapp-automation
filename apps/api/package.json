@@ -16,6 +16,7 @@
     "@whatsapp-platform/ai": "workspace:*",
     "@whatsapp-platform/config": "workspace:*",
     "@whatsapp-platform/database": "workspace:*",
+    "@whatsapp-platform/ecommerce-adapter": "workspace:*",
     "@whatsapp-platform/marketing-engine": "workspace:*",
     "@whatsapp-platform/shared": "workspace:*",
     "@whatsapp-platform/support-engine": "workspace:*",

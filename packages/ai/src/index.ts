@@ -103,7 +103,7 @@ export function createAiProvider(): AiProvider {
 
         const timeoutMs = request.timeoutMs || 10000;
         const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.AI_API_KEY}`;
-        
+
         let response: Response;
         try {
           response = await fetch(endpoint, {
@@ -113,7 +113,10 @@ export function createAiProvider(): AiProvider {
             signal: AbortSignal.timeout(timeoutMs),
           });
         } catch (fetchErr) {
-          logger.warn({ err: fetchErr, model }, 'Initial Gemini request timed out or network error; retrying once...');
+          logger.warn(
+            { err: fetchErr, model },
+            'Initial Gemini request timed out or network error; retrying once...',
+          );
           await new Promise((r) => setTimeout(r, 1000));
           response = await fetch(endpoint, {
             method: 'POST',

@@ -66,13 +66,16 @@ export class MarketingOrchestrator {
   /**
    * Evaluates audience segments and generates tailored WhatsApp content via Gemini AI
    */
-  public async runScheduledCampaign(): Promise<MarketingCampaignReport> {
-    logger.info('Starting automated AI marketing campaign evaluation...');
+  public async runScheduledCampaign(segmentFilter?: string): Promise<MarketingCampaignReport> {
+    logger.info({ segmentFilter }, 'Starting automated AI marketing campaign evaluation...');
     if (!this.customBusinessProfileProvided) {
       this.businessProfile = getBusinessProfile();
     }
 
-    const candidates = await this.ecommerceAdapter.getMarketingCandidates();
+    const allCandidates = await this.ecommerceAdapter.getMarketingCandidates();
+    const candidates = segmentFilter
+      ? allCandidates.filter((c) => c.segmentType.toLowerCase() === segmentFilter.toLowerCase())
+      : allCandidates;
     const activeProducts = await this.ecommerceAdapter.getAllActiveProducts();
 
     const report: MarketingCampaignReport = {
@@ -178,21 +181,31 @@ export class MarketingOrchestrator {
     const customerName = candidate.customer.firstName || 'Friend';
     const productNames = products.map((p) => p.title).join(', ');
     const campaigns = this.businessProfile.marketingCampaigns;
+
+    // Check website Supabase database for verified active promotions
+    const dbPromo = await this.ecommerceAdapter.getActivePromotion().catch(() => null);
     const isPromoEnabled = Boolean(
-      this.businessProfile.promotions?.enabled && this.businessProfile.promotions?.activePromo,
+      dbPromo ||
+      (this.businessProfile.promotions?.enabled && this.businessProfile.promotions?.activePromo),
     );
-    const activeDiscountCode = isPromoEnabled
-      ? this.businessProfile.promotions?.activePromo?.code || ''
-      : '';
+    const activeDiscountCode =
+      dbPromo?.code ||
+      (isPromoEnabled ? this.businessProfile.promotions?.activePromo?.code || '' : '');
+    const promoDescription =
+      dbPromo?.terms ||
+      this.businessProfile.promotions?.activePromo?.description ||
+      `${dbPromo?.discountValue || 10}% off`;
 
     let promptContext = '';
     switch (candidate.segmentType) {
       case 'FIRST_ORDER_NURTURE':
-        promptContext = formatTemplate(campaigns.firstOrderNurture.promptInstruction, {
-          brandName: this.businessProfile.brand.name,
-          discountCode: activeDiscountCode || '',
-          customerName,
-        });
+        promptContext = isPromoEnabled
+          ? formatTemplate(campaigns.firstOrderNurture.promptInstruction, {
+              brandName: this.businessProfile.brand.name,
+              discountCode: activeDiscountCode,
+              customerName,
+            })
+          : `The customer completed their first purchase a week ago. Thank them for supporting ${this.businessProfile.brand.name}, ask how they enjoyed their fresh order, and recommend exploring signature treats without mentioning any discount.`;
         break;
       case 'REPEAT_REPLENISHMENT':
         promptContext = formatTemplate(campaigns.repeatReplenishment.promptInstruction, {
@@ -208,11 +221,13 @@ export class MarketingOrchestrator {
         });
         break;
       case 'WIN_BACK':
-        promptContext = formatTemplate(campaigns.winBack.promptInstruction, {
-          brandName: this.businessProfile.brand.name,
-          discountCode: activeDiscountCode || '',
-          customerName,
-        });
+        promptContext = isPromoEnabled
+          ? formatTemplate(campaigns.winBack.promptInstruction, {
+              brandName: this.businessProfile.brand.name,
+              discountCode: activeDiscountCode,
+              customerName,
+            })
+          : `The customer hasn't ordered in over 60 days. Warmly invite them back to see our newest fresh batches and customer favorites without offering any discounts.`;
         break;
     }
 
@@ -220,8 +235,8 @@ export class MarketingOrchestrator {
       this.businessProfile.brand.links?.websiteUrl || this.businessProfile.brand.websiteUrl;
 
     const promoGuideline = isPromoEnabled
-      ? `- Active Promotion: Mention code "${this.businessProfile.promotions?.activePromo?.code}" (${this.businessProfile.promotions?.activePromo?.description}).`
-      : `- Strict Promotion Policy: Do NOT include or offer any discount codes, coupons, or promo codes. All treats are direct from the artisan with free express shipping on ₹699+.`;
+      ? `- Active Promotion: Mention verified code "${activeDiscountCode}" (${promoDescription}).`
+      : `- Strict Promotion Policy: Do NOT include, mention, or offer any discount codes, coupons, or promo codes. All orders are priced as shown on website.`;
 
     const systemPrompt = `You are an expert, respectful WhatsApp marketing copywriter for "${this.businessProfile.brand.name}" (${this.businessProfile.brand.location}) — ${this.businessProfile.brand.tagline}.
 

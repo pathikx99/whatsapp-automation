@@ -69,6 +69,34 @@ export interface WebsiteReview {
   createdAt: string;
 }
 
+export interface VerifiedPromotion {
+  id: string;
+  code: string;
+  discountType: 'percentage' | 'fixed_amount' | 'free_shipping';
+  discountValue: number;
+  minOrderValue?: number;
+  startsAt?: string;
+  expiresAt?: string;
+  isActive: boolean;
+  terms?: string;
+}
+
+export interface RFMSegmentSummary {
+  champions: EcommerceCustomer[];
+  loyal: EcommerceCustomer[];
+  atRisk: EcommerceCustomer[];
+  oneTimeRecent: EcommerceCustomer[];
+  dormant: EcommerceCustomer[];
+  counts: {
+    champions: number;
+    loyal: number;
+    atRisk: number;
+    oneTimeRecent: number;
+    dormant: number;
+    total: number;
+  };
+}
+
 export interface MarketingSegmentCandidate {
   customer: EcommerceCustomer;
   segmentType: 'FIRST_ORDER_NURTURE' | 'REPEAT_REPLENISHMENT' | 'CART_ABANDONED' | 'WIN_BACK';
@@ -105,7 +133,13 @@ export interface ReplenishmentPrediction {
 }
 
 export function generatePrefilledCheckoutUrl(
-  items: Array<{ name: string; quantity: number; sku?: string; unitPrice?: number; price?: number }>,
+  items: Array<{
+    name: string;
+    quantity: number;
+    sku?: string;
+    unitPrice?: number;
+    price?: number;
+  }>,
   promoCode?: string,
   baseUrl = 'https://mintarabites.com',
 ): string {
@@ -266,7 +300,11 @@ export function calculateConsumptionVelocity(
     daysSinceLastOrder,
     favoriteProduct,
     recommendedItems,
-    reorderCheckoutUrl: generatePrefilledCheckoutUrl(recommendedItems, options.promoCode, websiteUrl),
+    reorderCheckoutUrl: generatePrefilledCheckoutUrl(
+      recommendedItems,
+      options.promoCode,
+      websiteUrl,
+    ),
   };
 }
 
@@ -279,10 +317,40 @@ export interface EcommerceAdapter {
   getMarketingCandidates(): Promise<MarketingSegmentCandidate[]>;
   predictReplenishment(customerId: string): Promise<ReplenishmentPrediction | null>;
   getWebsiteReviews(productId?: string): Promise<WebsiteReview[]>;
+  getActivePromotion(options?: {
+    customerId?: string;
+    orderAmount?: number;
+  }): Promise<VerifiedPromotion | null>;
+  getRFMSegments(): Promise<RFMSegmentSummary>;
+}
+
+interface PostgrestFallback<T = any> {
+  data: T | null;
+  error: unknown;
+}
+
+function emptyFallback<T = any>(): PostgrestFallback<T> {
+  return { data: null, error: null };
 }
 
 export function createEcommerceAdapter(): EcommerceAdapter {
   const logger = createLogger({ name: 'ecommerce-adapter' });
+
+  async function runWithTimeout<T>(
+    queryPromise: PromiseLike<T>,
+    timeoutMs = 1500,
+    fallback: T,
+  ): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<T>((resolve) => {
+      timer = setTimeout(() => resolve(fallback), timeoutMs);
+    });
+    try {
+      return await Promise.race([Promise.resolve(queryPromise), timeoutPromise]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
 
   return {
     isConfigured(): boolean {
@@ -305,14 +373,18 @@ export function createEcommerceAdapter(): EcommerceAdapter {
 
         logger.debug({ digitsOnly, phone10, phone12 }, 'Querying customer by phone');
 
-        const { data, error } = await client
-          .from('customers')
-          .select(
-            'id, email, first_name, last_name, phone, customer_type, segment, total_spend, total_orders, last_order_date',
-          )
-          .or(`phone.eq.${phone10},phone.eq.${phone12},phone.eq.${digitsOnly}`)
-          .limit(1)
-          .maybeSingle();
+        const { data, error } = await runWithTimeout(
+          client
+            .from('customers')
+            .select(
+              'id, email, first_name, last_name, phone, customer_type, segment, total_spend, total_orders, last_order_date',
+            )
+            .or(`phone.eq.${phone10},phone.eq.${phone12},phone.eq.${digitsOnly}`)
+            .limit(1)
+            .maybeSingle(),
+          1500,
+          emptyFallback(),
+        );
 
         if (error) {
           logger.error({ error, phoneNumber }, 'Error fetching customer by phone');
@@ -342,13 +414,18 @@ export function createEcommerceAdapter(): EcommerceAdapter {
     async getCustomerOrders(customerId: string): Promise<EcommerceOrder[]> {
       try {
         const client = createEcommerceSupabaseClient();
-        const { data, error } = await client
-          .from('orders')
-          .select(
-            'id, order_number, customer_id, status, payment_status, payment_method, total_amount, created_at, order_items(quantity, price_at_purchase, product_variants(sku, flavor, weight_grams, products(name)))',
-          )
-          .eq('customer_id', customerId)
-          .order('created_at', { ascending: false });
+        const { data, error } = await runWithTimeout(
+          client
+            .from('orders')
+            .select(
+              'id, order_number, customer_id, status, payment_status, payment_method, total_amount, created_at, order_items(quantity, price_at_purchase, product_variants(sku, flavor, weight_grams, products(name)))',
+            )
+            .eq('customer_id', customerId)
+            .order('created_at', { ascending: false })
+            .limit(50),
+          1500,
+          emptyFallback(),
+        );
 
         if (error) {
           logger.error({ error, customerId }, 'Error fetching customer orders');
@@ -382,12 +459,17 @@ export function createEcommerceAdapter(): EcommerceAdapter {
     async getAllActiveProducts(): Promise<EcommerceProduct[]> {
       try {
         const client = createEcommerceSupabaseClient();
-        const { data, error } = await client
-          .from('products')
-          .select(
-            'id, name, description, category, requires_refrigeration, metadata, product_variants(sku, flavor, weight_grams, price, sale_price, stock_qty)',
-          )
-          .eq('is_active', true);
+        const { data, error } = await runWithTimeout(
+          client
+            .from('products')
+            .select(
+              'id, name, description, category, requires_refrigeration, metadata, product_variants(sku, flavor, weight_grams, price, sale_price, stock_qty)',
+            )
+            .eq('is_active', true)
+            .limit(200),
+          1500,
+          emptyFallback(),
+        );
 
         if (error) {
           logger.error({ error }, 'Error fetching active products');
@@ -436,14 +518,20 @@ export function createEcommerceAdapter(): EcommerceAdapter {
         const client = createEcommerceSupabaseClient();
         const candidates: MarketingSegmentCandidate[] = [];
 
-        // 1. Fetch recent customers & check their orders
-        const { data: customers, error } = await client
-          .from('customers')
-          .select(
-            'id, email, first_name, last_name, phone, segment, total_orders, total_spend, last_order_date',
-          );
+        // 1. Fetch recent customers (bounded limit to prevent OOM / table lock)
+        const { data: customers, error } = await runWithTimeout(
+          client
+            .from('customers')
+            .select(
+              'id, email, first_name, last_name, phone, segment, total_orders, total_spend, last_order_date',
+            )
+            .order('last_order_date', { ascending: false, nullsFirst: false })
+            .limit(2000),
+          1500,
+          emptyFallback(),
+        );
 
-        if (error || !customers) {
+        if (error || !customers || customers.length === 0) {
           logger.error({ error }, 'Error fetching customers for marketing segments');
           return [];
         }
@@ -509,10 +597,16 @@ export function createEcommerceAdapter(): EcommerceAdapter {
           }
         }
 
-        // 2. Check Cart Abandonment
-        const { data: cartItems } = await client
-          .from('cart_items')
-          .select('customer_id, product_variants(sku, products(name)), created_at');
+        // 2. Check Cart Abandonment (bounded limit to prevent OOM)
+        const { data: cartItems } = await runWithTimeout(
+          client
+            .from('cart_items')
+            .select('customer_id, product_variants(sku, products(name)), created_at')
+            .order('created_at', { ascending: false })
+            .limit(1000),
+          1500,
+          emptyFallback(),
+        );
 
         if (cartItems && cartItems.length > 0) {
           for (const item of cartItems) {
@@ -563,16 +657,21 @@ export function createEcommerceAdapter(): EcommerceAdapter {
         const client = createEcommerceSupabaseClient();
         let query = client
           .from('reviews')
-          .select('id, product_id, customer_id, customer_name, rating, title, comment, is_verified, created_at')
+          .select(
+            'id, product_id, customer_id, customer_name, rating, title, comment, is_verified, created_at',
+          )
           .order('created_at', { ascending: false });
 
         if (productId) {
           query = query.eq('product_id', productId);
         }
 
-        const { data, error } = await query;
+        const { data, error } = await runWithTimeout(query, 1500, emptyFallback());
         if (error) {
-          logger.warn({ error, productId }, 'Non-fatal error reading website reviews from ecommerce database');
+          logger.warn(
+            { error, productId },
+            'Non-fatal error reading website reviews from ecommerce database',
+          );
           return [];
         }
 
@@ -590,6 +689,199 @@ export function createEcommerceAdapter(): EcommerceAdapter {
       } catch (err) {
         logger.warn({ err, productId }, 'Failed querying website reviews from store database');
         return [];
+      }
+    },
+
+    async getActivePromotion(
+      options: { customerId?: string; orderAmount?: number } = {},
+    ): Promise<VerifiedPromotion | null> {
+      try {
+        const client = createEcommerceSupabaseClient();
+        if (!client) return null;
+
+        const queryWithTimeout = async () => {
+          // 1. Check primary 'promotions' table in website Supabase database
+          let { data, error } = await client
+            .from('promotions')
+            .select(
+              'id, code, discount_type, discount_value, min_order_value, starts_at, expires_at, is_active, terms',
+            )
+            .eq('is_active', true)
+            .order('discount_value', { ascending: false })
+            .limit(50);
+
+          // 2. Fallback check for 'coupons' table if promotions not found or errored
+          if (error || !data || data.length === 0) {
+            const fallback = await client
+              .from('coupons')
+              .select(
+                'id, code, discount_type, discount_value, min_order_value, starts_at, expires_at, is_active, terms',
+              )
+              .eq('is_active', true)
+              .order('discount_value', { ascending: false })
+              .limit(50);
+
+            if (!fallback.error && fallback.data && fallback.data.length > 0) {
+              data = fallback.data;
+              error = null;
+            }
+          }
+          return { data, error };
+        };
+
+        const timeoutPromise = new Promise<{ data: null; error: null }>((resolve) =>
+          setTimeout(() => resolve({ data: null, error: null }), 1500),
+        );
+
+        const { data, error } = await Promise.race([queryWithTimeout(), timeoutPromise]);
+
+        if (error || !data || data.length === 0) {
+          return null;
+        }
+
+        const now = Date.now();
+        // Validate time window and min order value
+        const validPromo = data.find((p: any) => {
+          if (!p.code || !p.is_active) return false;
+          if (p.starts_at && new Date(p.starts_at).getTime() > now) return false;
+          if (p.expires_at && new Date(p.expires_at).getTime() < now) return false;
+          if (
+            options.orderAmount !== undefined &&
+            p.min_order_value &&
+            options.orderAmount < Number(p.min_order_value)
+          ) {
+            return false;
+          }
+          return true;
+        });
+
+        if (!validPromo) return null;
+
+        return {
+          id: String(validPromo.id),
+          code: String(validPromo.code).trim().toUpperCase(),
+          discountType: validPromo.discount_type || 'percentage',
+          discountValue: Number(validPromo.discount_value) || 0,
+          minOrderValue: validPromo.min_order_value
+            ? Number(validPromo.min_order_value)
+            : undefined,
+          startsAt: validPromo.starts_at,
+          expiresAt: validPromo.expires_at,
+          isActive: Boolean(validPromo.is_active),
+          terms: validPromo.terms,
+        };
+      } catch (err) {
+        logger.debug({ err }, 'Safe check: No active promotions found in website database');
+        return null;
+      }
+    },
+
+    async getRFMSegments(): Promise<RFMSegmentSummary> {
+      try {
+        const client = createEcommerceSupabaseClient();
+        if (!client) {
+          return {
+            champions: [],
+            loyal: [],
+            atRisk: [],
+            oneTimeRecent: [],
+            dormant: [],
+            counts: { champions: 0, loyal: 0, atRisk: 0, oneTimeRecent: 0, dormant: 0, total: 0 },
+          };
+        }
+
+        const { data: customers, error } = await runWithTimeout(
+          client
+            .from('customers')
+            .select(
+              'id, email, first_name, last_name, phone, customer_type, segment, total_spend, total_orders, last_order_date',
+            )
+            .order('last_order_date', { ascending: false, nullsFirst: false })
+            .limit(5000),
+          1500,
+          emptyFallback(),
+        );
+
+        if (error || !customers || customers.length === 0) {
+          return {
+            champions: [],
+            loyal: [],
+            atRisk: [],
+            oneTimeRecent: [],
+            dormant: [],
+            counts: { champions: 0, loyal: 0, atRisk: 0, oneTimeRecent: 0, dormant: 0, total: 0 },
+          };
+        }
+
+        const now = Date.now();
+        const oneDay = 24 * 60 * 60 * 1000;
+
+        const champions: EcommerceCustomer[] = [];
+        const loyal: EcommerceCustomer[] = [];
+        const atRisk: EcommerceCustomer[] = [];
+        const oneTimeRecent: EcommerceCustomer[] = [];
+        const dormant: EcommerceCustomer[] = [];
+
+        for (const c of customers) {
+          const cust: EcommerceCustomer = {
+            id: c.id,
+            phoneNumber: c.phone,
+            email: c.email,
+            firstName: c.first_name,
+            lastName: c.last_name,
+            totalOrders: c.total_orders || 0,
+            totalSpend: Number(c.total_spend) || 0,
+            lastOrderDate: c.last_order_date,
+          };
+
+          const lastOrderTime = c.last_order_date ? new Date(c.last_order_date).getTime() : 0;
+          const daysSinceLastOrder =
+            lastOrderTime > 0 ? Math.floor((now - lastOrderTime) / oneDay) : null;
+          const ordersCount = cust.totalOrders || 0;
+
+          if (ordersCount >= 3 && daysSinceLastOrder !== null && daysSinceLastOrder <= 35) {
+            champions.push(cust);
+          } else if (ordersCount >= 2 && daysSinceLastOrder !== null && daysSinceLastOrder <= 50) {
+            loyal.push(cust);
+          } else if (
+            ordersCount >= 2 &&
+            daysSinceLastOrder !== null &&
+            daysSinceLastOrder > 50 &&
+            daysSinceLastOrder <= 100
+          ) {
+            atRisk.push(cust);
+          } else if (ordersCount === 1 && daysSinceLastOrder !== null && daysSinceLastOrder <= 30) {
+            oneTimeRecent.push(cust);
+          } else {
+            dormant.push(cust);
+          }
+        }
+
+        return {
+          champions,
+          loyal,
+          atRisk,
+          oneTimeRecent,
+          dormant,
+          counts: {
+            champions: champions.length,
+            loyal: loyal.length,
+            atRisk: atRisk.length,
+            oneTimeRecent: oneTimeRecent.length,
+            dormant: dormant.length,
+            total: customers.length,
+          },
+        };
+      } catch (err) {
+        logger.error({ err }, 'Failed calculating RFM segments from Supabase database');
+        return {
+          champions: [],
+          loyal: [],
+          atRisk: [],
+          oneTimeRecent: [],
+          dormant: [],
+          counts: { champions: 0, loyal: 0, atRisk: 0, oneTimeRecent: 0, dormant: 0, total: 0 },
+        };
       }
     },
   };

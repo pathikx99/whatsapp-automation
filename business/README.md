@@ -27,15 +27,17 @@ business/
 ### Step 1: Choose Your Business Model
 
 In `business/business-profile.json`, set `businessType`:
-* `"ecommerce"`: For physical goods, packaged foods, apparel, cosmetics, etc.
-* `"service"`: For clinics, salons, spas, consulting agencies, repair services, fitness coaching, etc.
-* `"hybrid"`: For businesses providing both products and services.
+
+- `"ecommerce"`: For physical goods, packaged foods, apparel, cosmetics, etc.
+- `"service"`: For clinics, salons, spas, consulting agencies, repair services, fitness coaching, etc.
+- `"hybrid"`: For businesses providing both products and services.
 
 ### Step 2: Define Your Offerings & Terminology
 
 Configure your terminology and catalog in `business-profile.json`:
 
 #### For a Product Business (e.g. Mintara Bites)
+
 ```json
 {
   "businessType": "ecommerce",
@@ -64,6 +66,7 @@ Configure your terminology and catalog in `business-profile.json`:
 ```
 
 #### For a Service Business (e.g. Lumina Clinic)
+
 ```json
 {
   "businessType": "service",
@@ -84,8 +87,18 @@ Configure your terminology and catalog in `business-profile.json`:
       "durationMinutes": 45,
       "bookingUrl": "https://luminaclinic.com/book?service=scaling",
       "variants": [
-        { "id": "btn_service_scaling_30m", "title": "30 Mins Standard", "price": 999, "sku": "scaling-30m" },
-        { "id": "btn_service_scaling_60m", "title": "60 Mins Deep Clean", "price": 1899, "sku": "scaling-60m" }
+        {
+          "id": "btn_service_scaling_30m",
+          "title": "30 Mins Standard",
+          "price": 999,
+          "sku": "scaling-30m"
+        },
+        {
+          "id": "btn_service_scaling_60m",
+          "title": "60 Mins Deep Clean",
+          "price": 1899,
+          "sku": "scaling-60m"
+        }
       ]
     }
   ]
@@ -110,28 +123,29 @@ Configure your terminology and catalog in `business-profile.json`:
 
 All notification and support templates in `business-profile.json` automatically format the following dynamic variables:
 
-| Placeholder | Meaning / Source | Example Output |
-| :--- | :--- | :--- |
-| `{{customerName}}` | Customer's first name | Aarav |
-| `{{customerPhone}}` | Customer's WhatsApp phone number | 919876543210 |
-| `{{brandName}}` | Brand name from profile | Mintara Bites / Lumina Clinic |
-| `{{orderNumber}}` | Order or Appointment Reference Number | MB-8801 / APT-402 |
-| `{{itemsSummary}}` | List of items or services booked | 1x Artisanal Paan Mukhwas (300g) |
-| `{{totalAmount}}` | Total price in rupees | 249 |
-| `{{websiteUrl}}` | Main brand website URL | https://mintarabites.com |
-| `{{cartUrl}}` | Cart checkout or online booking link | https://mintarabites.com/cart |
-| `{{orderTrackingUrl}}` | Web dashboard for tracking or booking management | https://mintarabites.com/account/orders |
-| `{{instagram}}` | Instagram handle | @mintarabites |
-| `{{location}}` | Business headquarters or clinic location | Surat, Gujarat, India |
-| `{{reason}}` | NDR courier failure reason or reschedule note | Customer unavailable / Time conflict |
-| `{{favoriteItem}}` | Frequently ordered product or service | Artisanal Paan Mukhwas (300g) |
-| `{{reorderOrBookingUrl}}` | Direct 1-click reorder or rebooking link | Prefilled checkout / booking URL |
+| Placeholder               | Meaning / Source                                 | Example Output                          |
+| :------------------------ | :----------------------------------------------- | :-------------------------------------- |
+| `{{customerName}}`        | Customer's first name                            | Aarav                                   |
+| `{{customerPhone}}`       | Customer's WhatsApp phone number                 | 919876543210                            |
+| `{{brandName}}`           | Brand name from profile                          | Mintara Bites / Lumina Clinic           |
+| `{{orderNumber}}`         | Order or Appointment Reference Number            | MB-8801 / APT-402                       |
+| `{{itemsSummary}}`        | List of items or services booked                 | 1x Artisanal Paan Mukhwas (300g)        |
+| `{{totalAmount}}`         | Total price in rupees                            | 249                                     |
+| `{{websiteUrl}}`          | Main brand website URL                           | https://mintarabites.com                |
+| `{{cartUrl}}`             | Cart checkout or online booking link             | https://mintarabites.com/cart           |
+| `{{orderTrackingUrl}}`    | Web dashboard for tracking or booking management | https://mintarabites.com/account/orders |
+| `{{instagram}}`           | Instagram handle                                 | @mintarabites                           |
+| `{{location}}`            | Business headquarters or clinic location         | Surat, Gujarat, India                   |
+| `{{reason}}`              | NDR courier failure reason or reschedule note    | Customer unavailable / Time conflict    |
+| `{{favoriteItem}}`        | Frequently ordered product or service            | Artisanal Paan Mukhwas (300g)           |
+| `{{reorderOrBookingUrl}}` | Direct 1-click reorder or rebooking link         | Prefilled checkout / booking URL        |
 
 ---
 
 ## ⚡ Instant Business Switching
 
 To test or switch to another business model:
+
 1. **To switch to a Service Practice**:
    ```bash
    cp business/examples/service-business-profile.json business/business-profile.json
