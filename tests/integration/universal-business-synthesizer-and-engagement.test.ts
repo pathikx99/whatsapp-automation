@@ -1,13 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  buildDeterministicBusinessProfile,
-  synthesizeBusinessProfile,
-} from '@whatsapp-platform/ai';
-import {
-  businessProfileSchema,
-  resetBusinessKnowledgeCache,
-  getBusinessProfile,
-} from '@whatsapp-platform/config';
+import { synthesizeBusinessProfile } from '@whatsapp-platform/ai';
+import { resetBusinessKnowledgeCache } from '@whatsapp-platform/config';
 import { getPlatformRepository, resetPlatformRepository } from '@whatsapp-platform/database';
 import { buildServer } from '../../apps/api/src/server.js';
 import { SupportOrchestrator } from '../../apps/support-engine/src/orchestrator.js';

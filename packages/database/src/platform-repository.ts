@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { createLocalSupabaseClient } from './local-client.js';
+import { createEcommerceSupabaseClient } from './ecommerce-client.js';
 import { createLogger } from '@whatsapp-platform/shared';
 import {
   BusinessProfile,
@@ -251,6 +252,26 @@ export class PlatformRepository {
       .single();
 
     if (insertError) {
+      if (insertError.code === '23505') {
+        const { data: existing } = await this.client
+          .from('support_conversations')
+          .select('*')
+          .eq('phone_number', cleanPhone)
+          .maybeSingle();
+
+        if (existing) {
+          return {
+            id: existing.id,
+            phoneNumber: existing.phone_number,
+            customerName: existing.customer_name,
+            status: existing.status,
+            metadata: existing.metadata,
+            escalatedAt: existing.escalated_at,
+            createdAt: existing.created_at,
+            updatedAt: existing.updated_at,
+          };
+        }
+      }
       logger.error(
         { insertError, phoneNumber: cleanPhone },
         'Failed creating support_conversations row',
@@ -884,10 +905,30 @@ export class PlatformRepository {
         })
         .join(',');
 
-      const { data: orders, error: ordersError } = await this.client
-        .from('orders')
-        .select('id, total_amount, status, payment_status, shipping_phone, attribution_metadata')
-        .or(phoneFilter);
+      // Fetch orders from external ecommerce database, falling back to local client
+      let orders: Array<Record<string, unknown>> | null = null;
+      let ordersError: { message: string } | null = null;
+
+      try {
+        const ecomClient = createEcommerceSupabaseClient();
+        const res = await ecomClient
+          .from('orders')
+          .select('id, total_amount, status, payment_status, shipping_phone, attribution_metadata')
+          .or(phoneFilter);
+        orders = res.data;
+        ordersError = res.error;
+      } catch {
+        // Fallback
+      }
+
+      if (!orders || ordersError) {
+        const res = await this.client
+          .from('orders')
+          .select('id, total_amount, status, payment_status, shipping_phone, attribution_metadata')
+          .or(phoneFilter);
+        orders = res.data;
+        ordersError = res.error;
+      }
 
       if (!ordersError && orders) {
         const validOrders = orders.filter(
@@ -1560,11 +1601,28 @@ export class PlatformRepository {
 
         try {
           const cleanPhone = conv.phone_number.replace(/\D/g, '');
-          const { data: customerRow } = await this.client
-            .from('customers')
-            .select('total_orders, total_spend')
-            .eq('phone', cleanPhone)
-            .maybeSingle();
+          let customerRow: Record<string, unknown> | null = null;
+
+          try {
+            const ecomClient = createEcommerceSupabaseClient();
+            const res = await ecomClient
+              .from('customers')
+              .select('total_orders, total_spend')
+              .eq('phone', cleanPhone)
+              .maybeSingle();
+            customerRow = res.data;
+          } catch {
+            // Fallback
+          }
+
+          if (!customerRow) {
+            const res = await this.client
+              .from('customers')
+              .select('total_orders, total_spend')
+              .eq('phone', cleanPhone)
+              .maybeSingle();
+            customerRow = res.data;
+          }
 
           if (customerRow) {
             ordersCount = Number(customerRow.total_orders) || 0;
