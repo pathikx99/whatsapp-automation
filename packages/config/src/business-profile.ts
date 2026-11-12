@@ -151,7 +151,23 @@ export const navigationButtonsSchema = z.object({
     id: 'btn_csat_low_stars',
     title: '⭐ (1-3 Stars)',
   }),
-});
+  fridgePlaced: navigationButtonSchema.default({
+    id: 'btn_fridge_placed',
+    title: '❄️ Fridge Me Rakh Diya!',
+  }),
+  cravingSatisfied: navigationButtonSchema.default({
+    id: 'btn_craving_satisfied',
+    title: '🤤 Abhi Khata Hoon!',
+  }),
+  viewSeedsFusion: navigationButtonSchema.default({
+    id: 'btn_view_seeds_fusion',
+    title: '🌱 Seeds Fusion',
+  }),
+  viewTrioPack: navigationButtonSchema.default({
+    id: 'btn_view_trio_pack',
+    title: '🎁 Trio Pack',
+  }),
+}).catchall(navigationButtonSchema);
 
 export const navigationSchema = z.object({
   buttons: navigationButtonsSchema.default({
@@ -248,10 +264,44 @@ export const notificationsSchema = z.object({
       body: z
         .string()
         .default(
-          'Hi {{customerName}}! 🌿\n\nYour daily jar of *{{favoriteItem}}* might be running low! A 300g pack lasts about 3-4 weeks for a typical household.\n\nKeep your daily after-meal digestive freshness uninterrupted — handcrafted fresh and packed right before dispatch.\n\n👉 *Tap to reorder your favorites in 1 click:*\n{{reorderOrBookingUrl}}',
+          'Warning: Critical Mukhwas Alert! 🚨\n\nHi {{customerName}}! Hamari calculation kehti hai ki aapke *{{favoriteItem}}* packet me ab bas aakhri 2-3 chammach bache honge! Aur un aakhri chammach ke liye ghar me ladai hona pakka hai ⚔️😅\n\nKal subah Surat se naya fresh batch pack hoke nikal raha hai. Bina daily ritual toote, direct 1-click me reorder karlo:\n\n👉 *Tap to reorder in 1-click:*\n{{reorderOrBookingUrl}}',
         ),
       cycleDays: z.number().default(25),
       buttonKeys: z.array(z.string()).default(['reorderFavorites', 'browseCatalog']),
+    })
+    .default({}),
+  fridgePlacementTip: z
+    .object({
+      body: z
+        .string()
+        .default(
+          'Hi {{customerName}}! 🌿 Ek pro-tip Surat ki kitchen se: 🤫\n\nApne Paan Mukhwas ko fridge ke sabse neeche ya peeche mat chhupana — varna aankhon se door, pet se door ho jayega!\n\nIsse *fridge ke door pocket me* rakho, theek thande paani ki bottle ke bagal me. Khane ke baad jaise hi paani lene jaoge, samne hi chilled & crisp Paan dikhega! ❄️✨\n\nStay chilled & refreshed!',
+        ),
+      delayDays: z.number().default(2),
+      buttonKeys: z.array(z.string()).default(['fridgePlaced', 'browseCatalog']),
+    })
+    .default({}),
+  dinnerHabitTrigger: z
+    .object({
+      body: z
+        .string()
+        .default(
+          "Plate saaf ho chuki hai na {{customerName}}? 🍽️😉\n\nPar dil abhi bhi bol raha hoga: 'Yaar, khane ke baad kuch refreshing chahiye!'\n\nFridge kholo aur ek chilled chammach *Artisanal Paan Mukhwas* nikalo! Thandi-thandi gulkand aur crisp Calcuttia paan ka maza dinner ke baad alag hi level ka hai! ❄️🍃\n\nDinner ko do ek royal finish! ✨",
+        ),
+      delayDays: z.number().default(4),
+      timeOfDay: z.string().default('21:15'),
+      buttonKeys: z.array(z.string()).default(['cravingSatisfied', 'browseCatalog']),
+    })
+    .default({}),
+  tableAnchorCrossSell: z
+    .object({
+      body: z
+        .string()
+        .default(
+          'Ek mazedaar idea share karein {{customerName}}? 💡\n\nPaan Mukhwas toh fridge me thand enjoy kar raha hai... Par din bhar ke snack ke liye dining table pe kya hai?\n\nMeet our *Seeds Fusion (6-Seed Powerhouse)*! Isse fridge ki zaroorat nahi — ye 24/7 aapki dining table pe rehta hai. White & black sesame, pumpkin, watermelon aur flax seeds ka tangy crunch! 🌱\n\nDono ka combo = Dining table pe crunch + Fridge me paan! 🌿{{promoLine}}\n\n👉 *Tap to view Seeds Fusion:*\n{{seedsUrl}}',
+        ),
+      delayDays: z.number().default(14),
+      buttonKeys: z.array(z.string()).default(['viewSeedsFusion', 'browseCatalog']),
     })
     .default({}),
 });
@@ -273,7 +323,7 @@ export const marketingCampaignsSchema = z.object({
       promptInstruction: z
         .string()
         .default(
-          'The customer is a valued repeat customer whose order was around 30 days ago. Remind them gently that their daily mukhwas jar might be getting empty! Suggest restocking their digestive freshness with fast delivery.',
+          'The customer is a valued repeat customer whose order was around 30 days ago. Remind them gently that their daily mukhwas packet might be getting empty! Suggest restocking their digestive freshness packed in high-quality standup pouches with fast delivery.',
         ),
     })
     .default({}),

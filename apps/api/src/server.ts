@@ -666,23 +666,92 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
             );
           }
 
-          // Automated CSAT / Review Collection:
-          // 3 days post-delivery, trigger a rating prompt (1–5 stars)
-          const csatDelayMs = 3 * 24 * 60 * 60 * 1000;
-          const scheduledTime = new Date(Date.now() + csatDelayMs).toISOString();
-          try {
-            await platformRepo.enqueueJob(
-              'csat_review_prompt',
-              {
-                customerPhone: phone,
-                customerName: name,
-                orderNumber: payload.orderNumber,
-              },
-              scheduledTime,
+          // -------------------------------------------------------------------
+          // AUTOMATED POST-DELIVERY GROWTH & RETENTION ENGINE (5 STAGES)
+          // -------------------------------------------------------------------
+          const getIstScheduledTime = (
+            delayDays: number,
+            hourIST = 13,
+            minuteIST = 30,
+          ): string => {
+            const istTime = new Date(Date.now() + 5.5 * 3600 * 1000);
+            istTime.setDate(istTime.getDate() + delayDays);
+            istTime.setUTCHours(hourIST, minuteIST, 0, 0);
+            return new Date(istTime.getTime() - 5.5 * 3600 * 1000).toISOString();
+          };
+
+          const lifecyclePayload = {
+            customerPhone: phone,
+            customerName: name,
+            orderNumber: payload.orderNumber,
+            items: payload.items || [
+              { name: 'Artisanal Paan Mukhwas (300g)', quantity: 1, unitPrice: 249 },
+            ],
+            favoriteProduct: payload.items?.[0]?.name || 'Artisanal Paan Mukhwas (300g)',
+          };
+
+          // 1. Day 2: Fridge Placement Tip (Solve "Out of Sight" issue at 12:30 PM IST)
+          const day2Delay =
+            (businessProfile.notifications as any)?.fridgePlacementTip?.delayDays ?? 2;
+          const day2Time = getIstScheduledTime(day2Delay, 12, 30);
+          await platformRepo
+            .enqueueJob('fridge_placement_tip', lifecyclePayload, day2Time)
+            .catch((err) => req.log.warn({ err, phone }, 'Failed scheduling fridge placement tip'));
+
+          // 2. Day 4: Post-Dinner Habit Trigger (Trigger craving at 21:15 IST)
+          const day4Delay =
+            (businessProfile.notifications as any)?.dinnerHabitTrigger?.delayDays ?? 4;
+          const day4Time = getIstScheduledTime(day4Delay, 21, 15);
+          await platformRepo
+            .enqueueJob('dinner_habit_trigger', lifecyclePayload, day4Time)
+            .catch((err) => req.log.warn({ err, phone }, 'Failed scheduling dinner habit trigger'));
+
+          // 3. Day 7: CSAT / Review Prompt (Collect honest review at 16:00 IST)
+          const day7Delay = 7;
+          const day7Time = getIstScheduledTime(day7Delay, 16, 0);
+          await platformRepo
+            .enqueueJob('csat_review_prompt', lifecyclePayload, day7Time)
+            .catch((err) => req.log.warn({ err, phone }, 'Failed scheduling CSAT review prompt'));
+
+          // 4. Day 14: Table Anchor Seeds Fusion Cross-Sell (at 14:00 IST)
+          const day14Delay =
+            (businessProfile.notifications as any)?.tableAnchorCrossSell?.delayDays ?? 14;
+          const day14Time = getIstScheduledTime(day14Delay, 14, 0);
+          await platformRepo
+            .enqueueJob('table_anchor_cross_sell', lifecyclePayload, day14Time)
+            .catch((err) =>
+              req.log.warn({ err, phone }, 'Failed scheduling table anchor cross sell'),
             );
-          } catch (err) {
-            req.log.error({ err, phone }, 'Failed scheduling CSAT review prompt job');
+
+          // 5. Day 21/25: Replenishment Reminder (Dynamic consumption velocity at 13:30 IST)
+          let replenishmentDays =
+            businessProfile.notifications?.replenishmentOrRebooking?.cycleDays || 25;
+          if (payload.items && payload.items.length > 0 && payload.items[0]?.name) {
+            const firstItemName = payload.items[0].name.toLowerCase();
+            if (firstItemName.includes('150g') || firstItemName.includes('100g')) {
+              replenishmentDays = 14;
+            } else if (firstItemName.includes('300g') || firstItemName.includes('200g')) {
+              replenishmentDays = 21;
+            } else if (firstItemName.includes('500g')) {
+              replenishmentDays = 35;
+            } else if (firstItemName.includes('700g') || firstItemName.includes('family')) {
+              replenishmentDays = 45;
+            }
           }
+          const refillTime = getIstScheduledTime(replenishmentDays, 13, 30);
+          await platformRepo
+            .enqueueJob(
+              'replenishment_reminder',
+              {
+                ...lifecyclePayload,
+                estimatedDays: replenishmentDays,
+              },
+              refillTime,
+            )
+            .catch((err) =>
+              req.log.warn({ err, phone }, 'Failed scheduling replenishment reminder'),
+            );
+
           break;
         }
 
@@ -985,6 +1054,111 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       return reply.status(500).send({
         status: 'error',
         message: err instanceof Error ? err.message : 'Unknown error during marketing execution',
+      });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // 4.05 Automated Post-Delivery Lifecycle Scheduling
+  // ---------------------------------------------------------------------------
+  app.post('/api/marketing/schedule-lifecycle', async (req, reply) => {
+    try {
+      const payload = req.body as {
+        customerPhone: string;
+        customerName?: string;
+        orderNumber?: string;
+        items?: Array<{ name: string; quantity: number; sku?: string; price?: number }>;
+      };
+
+      if (!payload?.customerPhone) {
+        return reply.status(400).send({ error: 'Missing customerPhone in request body' });
+      }
+
+      const phone = payload.customerPhone;
+      const name = payload.customerName || 'Friend';
+
+      const getIstScheduledTime = (delayDays: number, hourIST = 13, minuteIST = 30): string => {
+        const istTime = new Date(Date.now() + 5.5 * 3600 * 1000);
+        istTime.setDate(istTime.getDate() + delayDays);
+        istTime.setUTCHours(hourIST, minuteIST, 0, 0);
+        return new Date(istTime.getTime() - 5.5 * 3600 * 1000).toISOString();
+      };
+
+      const lifecyclePayload = {
+        customerPhone: phone,
+        customerName: name,
+        orderNumber: payload.orderNumber,
+        items: payload.items || [
+          { name: 'Artisanal Paan Mukhwas (300g)', quantity: 1, unitPrice: 249 },
+        ],
+        favoriteProduct: payload.items?.[0]?.name || 'Artisanal Paan Mukhwas (300g)',
+      };
+
+      const day2Time = getIstScheduledTime(2, 12, 30);
+      const day4Time = getIstScheduledTime(4, 21, 15);
+      const day7Time = getIstScheduledTime(7, 16, 0);
+      const day14Time = getIstScheduledTime(14, 14, 0);
+
+      let replenishmentDays = 25;
+      if (payload.items && payload.items.length > 0 && payload.items[0]?.name) {
+        const firstItemName = payload.items[0].name.toLowerCase();
+        if (firstItemName.includes('150g') || firstItemName.includes('100g')) {
+          replenishmentDays = 14;
+        } else if (firstItemName.includes('300g') || firstItemName.includes('200g')) {
+          replenishmentDays = 21;
+        } else if (firstItemName.includes('500g')) {
+          replenishmentDays = 35;
+        } else if (firstItemName.includes('700g') || firstItemName.includes('family')) {
+          replenishmentDays = 45;
+        }
+      }
+      const refillTime = getIstScheduledTime(replenishmentDays, 13, 30);
+
+      const job1 = await platformRepo.enqueueJob(
+        'fridge_placement_tip',
+        lifecyclePayload,
+        day2Time,
+      );
+      const job2 = await platformRepo.enqueueJob(
+        'dinner_habit_trigger',
+        lifecyclePayload,
+        day4Time,
+      );
+      const job3 = await platformRepo.enqueueJob(
+        'csat_review_prompt',
+        lifecyclePayload,
+        day7Time,
+      );
+      const job4 = await platformRepo.enqueueJob(
+        'table_anchor_cross_sell',
+        lifecyclePayload,
+        day14Time,
+      );
+      const job5 = await platformRepo.enqueueJob(
+        'replenishment_reminder',
+        {
+          ...lifecyclePayload,
+          estimatedDays: replenishmentDays,
+        },
+        refillTime,
+      );
+
+      return reply.status(200).send({
+        status: 'success',
+        message: 'All 5 post-delivery growth & retention stages automatically scheduled',
+        scheduledJobs: [
+          { type: 'fridge_placement_tip', scheduledFor: day2Time, jobId: job1.id },
+          { type: 'dinner_habit_trigger', scheduledFor: day4Time, jobId: job2.id },
+          { type: 'csat_review_prompt', scheduledFor: day7Time, jobId: job3.id },
+          { type: 'table_anchor_cross_sell', scheduledFor: day14Time, jobId: job4.id },
+          { type: 'replenishment_reminder', scheduledFor: refillTime, jobId: job5.id },
+        ],
+      });
+    } catch (err) {
+      req.log.error({ err }, 'Error scheduling automated lifecycle');
+      return reply.status(500).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Unknown error scheduling lifecycle',
       });
     }
   });

@@ -33,7 +33,7 @@
     "rules": [
       "Strictly DO NOT send or look up live courier tracking numbers or carrier status on WhatsApp. For real-time carrier tracking and privacy, always redirect customers to check their order dashboard on the website.",
       "Always emphasize that our products are 100% supari-free (no areca nut) and 100% tobacco-free.",
-      "If the customer asks about storage or refrigeration, clarify that Paan Mukhwas contains pure natural gulkand and must be refrigerated upon arrival to preserve crispness and aroma. Seeds Fusion and Coconut Crunch can be kept at room temperature in an airtight jar.",
+      "If the customer asks about storage or refrigeration, clarify that Paan Mukhwas contains pure natural gulkand and must be refrigerated upon arrival to preserve crispness and aroma. Seeds Fusion and Coconut Crunch can be kept at room temperature in their high-quality resealable standup pouch.",
       "Highlight that treats are made fresh on order and packed right before dispatch.",
       "Keep answers within 2-3 short, mobile-friendly paragraphs."
     ],
@@ -156,7 +156,7 @@
       "buttonKeys": ["browseCatalog"]
     },
     "replenishmentOrRebooking": {
-      "body": "Hi {{customerName}}! 🌿\n\nYour daily jar of *{{favoriteItem}}* might be running low! A 300g pack lasts about 3-4 weeks for a typical household.\n\nKeep your daily after-meal digestive freshness uninterrupted — handcrafted fresh and packed right before dispatch.\n\n👉 *Tap to reorder your favorites in 1 click:*\n{{reorderOrBookingUrl}}",
+      "body": "Hi {{customerName}}! 🌿\n\nYour daily packet of *{{favoriteItem}}* might be running low! A 300g pack lasts about 3-4 weeks for a typical household.\n\nKeep your daily after-meal digestive freshness uninterrupted — handcrafted fresh and packed in high-quality standup pouches right before dispatch.\n\n👉 *Tap to reorder your favorites in 1 click:*\n{{reorderOrBookingUrl}}",
       "cycleDays": 25,
       "buttonKeys": ["reorderFavorites", "browseCatalog"]
     }
@@ -168,7 +168,7 @@
     },
     "repeatReplenishment": {
       "reminderCycleDays": 30,
-      "promptInstruction": "The customer is a valued repeat customer whose order was around 30 days ago. Remind them gently that their daily mukhwas jar might be getting empty! Suggest restocking their digestive freshness with fast delivery."
+      "promptInstruction": "The customer is a valued repeat customer whose order was around 30 days ago. Remind them gently that their daily mukhwas packet might be getting empty! Suggest restocking their digestive freshness packed in high-quality standup pouches with fast delivery."
     },
     "cartAbandoned": {
       "promptInstruction": "The customer added '{{cartItemName}}' to their cart a few hours ago but hasn't checked out yet. Friendly reminder that their cart is reserved, mentioning our handcrafted fresh quality."

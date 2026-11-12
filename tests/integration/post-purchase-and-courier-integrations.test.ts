@@ -191,12 +191,12 @@ describe('Post-Purchase Journey & Courier Integrations', () => {
       expect((csatJob?.payload as any).orderNumber).toBe(orderNumber);
       expect((csatJob?.payload as any).customerName).toBe('Ananya');
 
-      // Verify scheduled time is ~3 days in future
+      // Verify scheduled time is ~7 days in future (post-delivery retention lifecycle)
       const scheduledTimeMs = new Date(csatJob!.scheduledFor).getTime();
       const nowMs = Date.now();
       const diffDays = (scheduledTimeMs - nowMs) / (1000 * 60 * 60 * 24);
-      expect(diffDays).toBeGreaterThan(2.9);
-      expect(diffDays).toBeLessThan(3.1);
+      expect(diffDays).toBeGreaterThan(6.0);
+      expect(diffDays).toBeLessThan(8.0);
     });
   });
 

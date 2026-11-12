@@ -29,13 +29,15 @@
   },
   "persona": {
     "role": "WhatsApp AI Concierge & Customer Assistant",
-    "tone": "Warm, respectful, welcoming, authentic, and concise. Format with WhatsApp markdown (*bold*, emoji accents, short readable paragraphs).",
+    "tone": "Warm, witty, respectful, authentic, and appetizing Hinglish (natural conversational Hindi in English script + punchy English). Speak like a knowledgeable foodie friend from Surat who loves after-meal digestive treats. Format with WhatsApp markdown (*bold*, subtle emojis, short readable paragraphs). Strictly DO NOT mention or offer discounts unless verified active in the database.",
     "rules": [
       "Strictly DO NOT send or look up live courier tracking numbers or carrier status on WhatsApp. For real-time carrier tracking and privacy, always redirect customers to check their order dashboard on the website.",
       "Always emphasize that our products are 100% supari-free (no areca nut) and 100% tobacco-free.",
-      "If the customer asks about storage or refrigeration, clarify that Paan Mukhwas contains pure natural gulkand and must be refrigerated upon arrival to preserve crispness and aroma. Seeds Fusion and Coconut Crunch can be kept at room temperature in an airtight jar.",
-      "Highlight that treats are made fresh on order and packed right before dispatch.",
-      "Keep answers within 2-3 short, mobile-friendly paragraphs."
+      "If the customer asks about storage or refrigeration, enthusiastically explain that Paan Mukhwas contains pure natural gulkand and must be refrigerated upon arrival. Pro-tip: Keep it in the fridge door pocket at eye-level right next to the cold water bottle so it stays super crisp and doesn't get hidden or forgotten.",
+      "Highlight that treats are made fresh on order in Surat, Gujarat and packed right before courier dispatch for maximum crispness and aroma.",
+      "Under no circumstances should you invent, mention, or suggest coupon codes or promotional discounts unless they are explicitly provided in verified promotion context.",
+      "If the customer mentions weddings, shaadi, bulk gifting, or corporate hampers, warmly collect event date and approximate quantity, and assure them our founder will connect with custom sample box arrangements.",
+      "Keep answers within 2-3 short, mobile-friendly paragraphs in conversational Hinglish."
     ],
     "escalationCriteria": [
       "Customer requests refunds, replacements, returns, or order cancellations.",
@@ -47,7 +49,7 @@
   },
   "brandHighlights": [
     "100% SUPARI & ARECA NUT FREE. 100% TOBACCO FREE.",
-    "Made fresh on order: Packed right before dispatch so treats retain crispness and authentic aroma.",
+    "Made fresh on order: Packed fresh in high-quality resealable standup pouches right before dispatch so treats retain crispness and authentic aroma.",
     "FSSAI Registered Indian Brand (Reg. No. 20726031000436) based in Surat, Gujarat.",
     "Pure natural ingredients: Natural gulkand, sweet fennel (variyali), roasted coriander seeds (dhanadal), and wholesome seeds.",
     "Paan Mukhwas: Infusion of Calcuttia betel leaves and natural rose gulkand. Requires refrigeration.",
@@ -61,7 +63,7 @@
     "values": [
       "100% Supari & Areca Nut Free: Zero areca nut or toxic chewing agents.",
       "100% Tobacco Free: Clean, wholesome treats for the entire family.",
-      "Freshly Packed on Order: Made in small artisanal batches and packed right before courier dispatch for maximum aroma and crispness.",
+      "Freshly Packed on Order: Made in small artisanal batches and packed in high-quality resealable standup pouches right before courier dispatch for maximum aroma and crispness.",
       "Natural Ingredients: Prepared with pure rose petal gulkand, premium sweet variyali, slow-roasted dhanadal, toasted coconut, and wholesome seeds."
     ],
     "policies": {
@@ -69,7 +71,7 @@
       "orderTracking": "For live courier updates and tracking, instruct customers to check their dashboard at https://mintarabites.com/account/orders. Never attempt to guess or invent tracking numbers on WhatsApp.",
       "wholesaleAndGifting": "We provide custom trial boxes for cafes, restaurants, wedding hampers, and corporate gifting. Inquire via WhatsApp or contact.mintarabites@gmail.com."
     },
-    "customMarkdown": "## Storage & Shelf Life Guidelines\n- **Paan Mukhwas**: Store in the refrigerator upon receipt. Shelf life is 3 months refrigerated.\n- **Seeds Fusion & Coconut Crunch**: Store in an airtight container at cool room temperature away from direct sunlight. Shelf life is 6 months."
+    "customMarkdown": "## Storage & Shelf Life Guidelines\n- **Paan Mukhwas**: Store in the refrigerator upon receipt. Shelf life is 3 months refrigerated.\n- **Seeds Fusion & Coconut Crunch**: Store in its high-quality resealable standup pouch at cool room temperature away from direct sunlight. Shelf life is 6 months."
   },
   "promotions": {
     "enabled": false,
@@ -119,6 +121,22 @@
       "csatLowStar": {
         "id": "btn_csat_low_stars",
         "title": "⭐ (1-3 Stars)"
+      },
+      "fridgePlaced": {
+        "id": "btn_fridge_placed",
+        "title": "❄️ Fridge Me Rakh Diya!"
+      },
+      "cravingSatisfied": {
+        "id": "btn_craving_satisfied",
+        "title": "🤤 Abhi Khata Hoon!"
+      },
+      "viewSeedsFusion": {
+        "id": "btn_view_seeds_fusion",
+        "title": "🌱 Seeds Fusion"
+      },
+      "viewTrioPack": {
+        "id": "btn_view_trio_pack",
+        "title": "🎁 Trio Pack"
       }
     },
     "catalogBrowse": {
@@ -150,8 +168,8 @@
       "buttonKeys": ["trackOrder"]
     },
     "orderDelivered": {
-      "refrigerationNudge": "Your Mintara Paan Mukhwas has arrived! 🌿 Please pop it into the refrigerator right away to preserve its crisp texture and authentic rose aroma.",
-      "standardBody": "Hi {{customerName}}! 🎉\n\nYour {{brandName}} order *#{{orderNumber}}* has been delivered! Enjoy your freshly handcrafted treats.\n\nExplore more treats anytime: {{websiteUrl}}",
+      "refrigerationNudge": "Aapka Mintara Paan Mukhwas deliver ho gaya hai! 🎉 Isse turant fridge ke door pocket me (thande paani ki bottle ke bagal me) daal do taaki Calcuttia paan leaf aur gulkand ekdum chilled aur crisp rahein! ❄️✨",
+      "standardBody": "Hi {{customerName}}! 🎉 Aapka {{brandName}} order *#{{orderNumber}}* deliver ho gaya hai! Enjoy your freshly handcrafted treats after meals tonight.\n\nWebsite: {{websiteUrl}}",
       "buttonKeys": ["browseCatalog"]
     },
     "ndrAlert": {
@@ -159,35 +177,50 @@
       "buttonKeys": ["ndrUpdateAddress", "ndrReattempt"]
     },
     "csatPrompt": {
-      "body": "Hi {{customerName}}! ✨\n\nHow was your experience with {{brandName}}? We hope you are loving your handcrafted mouth fresheners!\n\nPlease rate your experience with us (1–5 stars):",
+      "body": "Hi {{customerName}}! ✨\n\nEk hafte ho gaye fresh batch ke sath! Kaisa laga Mintara Bites ka crunch? Sach sach batana, taste kaisa laga? ⭐",
       "buttonKeys": ["csat5Star", "csat4Star", "csatLowStar"]
     },
     "cartAbandoned": {
-      "body": "Hi {{customerName}}! 🌿\n\nWe noticed you left *{{cartItemName}}* in your cart.\n\nYour cart is reserved! Finish your checkout now for pure, 100% supari-free freshness:\n👉 {{cartUrl}}",
+      "body": "Hi {{customerName}}! 🌿\n\nHumne dekha aapka favorite *{{cartItemName}}* cart me reh gaya hai.\n\nAapka cart reserved hai! 100% supari-free fresh batch checkout karne ke liye yahan tap karein:\n👉 {{cartUrl}}",
       "buttonKeys": ["browseCatalog"]
     },
     "replenishmentOrRebooking": {
-      "body": "Hi {{customerName}}! 🌿\n\nYour daily jar of *{{favoriteItem}}* might be running low! A 300g pack lasts about 3-4 weeks for a typical household.\n\nKeep your daily after-meal digestive freshness uninterrupted — handcrafted fresh and packed right before dispatch.\n\n👉 *Tap to reorder your favorites in 1 click:*\n{{reorderOrBookingUrl}}",
+      "body": "Warning: Critical Mukhwas Alert! 🚨\n\nHi {{customerName}}! Hamari calculation kehti hai ki aapke *{{favoriteItem}}* packet me ab bas aakhri 2-3 chammach bache honge! Aur un aakhri chammach ke liye ghar me ladai hona pakka hai ⚔️😅\n\nKal subah Surat se naya fresh batch pack hoke nikal raha hai. Bina daily ritual toote, direct 1-click me reorder karlo:\n\n👉 *Tap to reorder in 1-click:*\n{{reorderOrBookingUrl}}",
       "cycleDays": 25,
       "buttonKeys": ["reorderFavorites", "browseCatalog"]
+    },
+    "fridgePlacementTip": {
+      "body": "Hi {{customerName}}! 🌿 Ek pro-tip Surat ki kitchen se: 🤫\n\nApne Paan Mukhwas ko fridge ke sabse neeche ya peeche mat chhupana — varna aankhon se door, pet se door ho jayega!\n\nIsse *fridge ke door pocket me* rakho, theek thande paani ki bottle ke bagal me. Khane ke baad jaise hi paani lene jaoge, samne hi chilled & crisp Paan dikhega! ❄️✨\n\nStay chilled & refreshed!",
+      "delayDays": 2,
+      "buttonKeys": ["fridgePlaced", "browseCatalog"]
+    },
+    "dinnerHabitTrigger": {
+      "body": "Plate saaf ho chuki hai na {{customerName}}? 🍽️😉\n\nPar dil abhi bhi bol raha hoga: 'Yaar, khane ke baad kuch refreshing chahiye!'\n\nFridge kholo aur ek chilled chammach *Artisanal Paan Mukhwas* nikalo! Thandi-thandi gulkand aur crisp Calcuttia paan ka maza dinner ke baad alag hi level ka hai! ❄️🍃\n\nDinner ko do ek royal finish! ✨",
+      "delayDays": 4,
+      "buttonKeys": ["cravingSatisfied", "browseCatalog"]
+    },
+    "tableAnchorCrossSell": {
+      "body": "Ek mazedaar idea share karein {{customerName}}? 💡\n\nPaan Mukhwas toh fridge me thand enjoy kar raha hai... Par din bhar ke snack ke liye dining table pe kya hai?\n\nMeet our *Seeds Fusion (6-Seed Powerhouse)*! Isse fridge ki zaroorat nahi — ye 24/7 aapki dining table pe rehta hai. White & black sesame, pumpkin, watermelon aur flax seeds ka tangy crunch! 🌱\n\nDono ka combo = Dining table pe crunch + Fridge me paan! 🌿\n\n👉 *Tap to view Seeds Fusion:*\n{{seedsUrl}}",
+      "delayDays": 14,
+      "buttonKeys": ["viewSeedsFusion", "browseCatalog"]
     }
   },
   "marketingCampaigns": {
     "firstOrderNurture": {
       "discountCode": "MINTARA10",
-      "promptInstruction": "The customer completed their first purchase a week ago. Thank them for supporting {{brandName}}, ask how they enjoyed their fresh treat, and recommend exploring another signature favorite (like Seeds Fusion or Coconut Crunch) with a 10% repeat order code '{{discountCode}}'."
+      "promptInstruction": "The customer completed their first purchase a week ago. In warm, appetizing Hinglish, thank them for supporting {{brandName}}, ask how they enjoyed their fresh treat after meals, and suggest exploring our table-friendly Seeds Fusion or Coconut Crunch. Strictly DO NOT mention or invent any discount codes unless verified active promo is explicitly provided."
     },
     "repeatReplenishment": {
       "reminderCycleDays": 30,
-      "promptInstruction": "The customer is a valued repeat customer whose order was around 30 days ago. Remind them gently that their daily mukhwas jar might be getting empty! Suggest restocking their digestive freshness with fast delivery."
+      "promptInstruction": "In playful, appetizing Hinglish, remind the valued repeat customer that their daily mukhwas packet is likely down to the last spoonfuls! Remind them that fresh batches are packed on order in Surat in high-quality standup pouches with 100% supari-free ingredients. Strictly DO NOT mention or invent discounts unless verified active promo is explicitly provided."
     },
     "cartAbandoned": {
-      "promptInstruction": "The customer added '{{cartItemName}}' to their cart a few hours ago but hasn't checked out yet. Friendly reminder that their cart is reserved, mentioning our handcrafted fresh quality."
+      "promptInstruction": "In friendly, conversational Hinglish, remind the customer that they left '{{cartItemName}}' in their cart. Highlight our handcrafted fresh quality and 100% supari-free guarantee. Strictly DO NOT mention discounts unless verified active promo is explicitly provided."
     },
     "winBack": {
       "discountCode": "WELCOME15",
       "inactiveThresholdDays": 60,
-      "promptInstruction": "The customer hasn't ordered in over 60 days. Welcome them back with an exclusive 15% discount code '{{discountCode}}' to try our newest fresh batches."
+      "promptInstruction": "The customer hasn't ordered in over 60 days. In warm, appetizing Hinglish, invite them back to see our newest fresh batches and signature treats. Strictly DO NOT mention or offer discounts unless verified active promo is explicitly provided."
     }
   },
   "supportMessages": {

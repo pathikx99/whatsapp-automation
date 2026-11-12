@@ -17,7 +17,7 @@ Mintara Bites is a premium artisanal brand based in Surat, Gujarat, specializing
 
 1. **100% Supari & Areca Nut Free**: Zero areca nut or toxic chewing agents.
 2. **100% Tobacco Free**: Clean, wholesome treats for the entire family.
-3. **Freshly Packed on Order**: Made in small artisanal batches and packed right before courier dispatch for maximum aroma and crispness.
+3. **Freshly Packed on Order**: Made in small artisanal batches and packed in high-quality resealable standup pouches (packets) right before courier dispatch for maximum aroma, crispness, and freshness.
 4. **Natural Ingredients**: Prepared with pure rose petal gulkand, premium sweet variyali (fennel), slow-roasted dhanadal (coriander seeds), toasted coconut, and nutritious wholesome seeds.
 
 ---

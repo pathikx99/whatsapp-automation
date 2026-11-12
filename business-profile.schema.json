@@ -142,6 +142,30 @@
             "cycleDays": { "type": "number" },
             "buttonKeys": { "type": "array", "items": { "type": "string" } }
           }
+        },
+        "fridgePlacementTip": {
+          "type": "object",
+          "properties": {
+            "body": { "type": "string" },
+            "delayDays": { "type": "number" },
+            "buttonKeys": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "dinnerHabitTrigger": {
+          "type": "object",
+          "properties": {
+            "body": { "type": "string" },
+            "delayDays": { "type": "number" },
+            "buttonKeys": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "tableAnchorCrossSell": {
+          "type": "object",
+          "properties": {
+            "body": { "type": "string" },
+            "delayDays": { "type": "number" },
+            "buttonKeys": { "type": "array", "items": { "type": "string" } }
+          }
         }
       }
     },

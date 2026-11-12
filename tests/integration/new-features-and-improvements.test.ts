@@ -206,7 +206,7 @@ describe('New Features & Improvements (Typing, Multimodal, Lists, Idempotency, L
         method: 'POST',
         url: `/api/support/conversations/${conv.id}/reply`,
         payload: {
-          message: "Hi! This is the store founder. I've personally dispatched a fresh jar for you!",
+          message: "Hi! This is the store founder. I've personally dispatched a fresh packet for you!",
           agentName: 'Founder Support',
         },
       });

@@ -783,6 +783,147 @@ export class SupportOrchestrator {
     }
 
     // -------------------------------------------------------------------------
+    // 5.3 Lifecycle Habit Confirmation Buttons
+    // -------------------------------------------------------------------------
+    if (buttonId === 'btn_fridge_placed') {
+      const fridgeAck =
+        `Shabash ${customerName}! ❄️\n\n` +
+        `Chilled Paan Mukhwas ka swaad hi alag hota hai! Dinner ke baad ek chilled chammach try karke batana kaisa laga ✨\n\n` +
+        `Pro-tip: Bottle ke bagal me rakhne se kabhi miss nahi hoga! 🌿`;
+
+      await this.whatsappProvider.sendMessage({
+        type: 'interactive',
+        to: fromPhone,
+        body: fridgeAck,
+        buttons: this.defaultButtons,
+      });
+
+      await this.platformRepo.appendMessage(conversation.id, fromPhone, 'assistant', fridgeAck);
+
+      return {
+        action: 'answered',
+        responseText: fridgeAck,
+        customerIdentified: Boolean(customer),
+        customerId: customer?.id,
+        conversationId: conversation.id,
+      };
+    }
+
+    if (buttonId === 'btn_craving_satisfied') {
+      const cravingAck =
+        `Enjoy your chilled digestive crunch, ${customerName}! 🌿\n\n` +
+        `100% supari-free, pure rose gulkand aur crisp Calcuttia paan leaf. A perfect finish to every meal! ✨`;
+
+      await this.whatsappProvider.sendMessage({
+        type: 'interactive',
+        to: fromPhone,
+        body: cravingAck,
+        buttons: this.defaultButtons,
+      });
+
+      await this.platformRepo.appendMessage(conversation.id, fromPhone, 'assistant', cravingAck);
+
+      return {
+        action: 'answered',
+        responseText: cravingAck,
+        customerIdentified: Boolean(customer),
+        customerId: customer?.id,
+        conversationId: conversation.id,
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // 5.4 Inbound Packaging Standup Pouch / Packet QR Code Refill Scan
+    // -------------------------------------------------------------------------
+    const isPackagingQrScan =
+      /\b(KHATAM_REFILL_CHAHIYE|FRESH_REFILL_CHAHIYE|REFILL_MINTARA)\b/i.test(rawText) ||
+      buttonId === 'btn_khatam_refill';
+
+    if (isPackagingQrScan) {
+      const activePromo = await this.ecommerceAdapter.getActivePromotion().catch(() => null);
+      const promoNotice = activePromo
+        ? `\n\n🎁 *Website Offer Applied:* Code *${activePromo.code}* automatically attached!`
+        : '';
+      const refillWelcomeMsg =
+        `Arre waah! Packet khali ho gaya? 😍 Welcome back to Mintara Bites Surat!\n\n` +
+        `Hamare saare treats 100% supari-free aur natural rose gulkand se banaye jate hain. Kal subah naya fresh batch Surat se nikal raha hai.${promoNotice}\n\n` +
+        `Konsa fresh pack dispatch karein?`;
+
+      await this.whatsappProvider.sendMessage({
+        type: 'interactive',
+        to: fromPhone,
+        body: refillWelcomeMsg,
+        buttons: [
+          { id: 'btn_size_paan_300g', title: '🌿 Paan 300g (₹249)' },
+          { id: 'btn_size_trio_350g', title: '🎁 Trio Pack (₹399)' },
+          { id: 'btn_browse_catalog', title: '🛒 Browse Treats' },
+        ],
+      });
+
+      await this.platformRepo.appendMessage(
+        conversation.id,
+        fromPhone,
+        'assistant',
+        refillWelcomeMsg,
+      );
+
+      return {
+        action: 'answered',
+        responseText: refillWelcomeMsg,
+        customerIdentified: Boolean(customer),
+        customerId: customer?.id,
+        conversationId: conversation.id,
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // 5.5 High-Ticket B2B, Wedding & Corporate Bulk Gifting Intake
+    // -------------------------------------------------------------------------
+    const isB2BGiftingQuery =
+      /\b(wedding|shaadi|shadi|corporate|bulk\s*orders?|hampers?|wholesale|return\s*gifts?|event\s*gifts?)\b/i.test(
+        rawText,
+      );
+
+    if (isB2BGiftingQuery) {
+      const b2bMsg =
+        `Hi ${customerName}! 🎉 Shaadi ya corporate gifting me wahi boring sweets aur soan papdi de dekar thak gaye ho? 😉\n\n` +
+        `Mintara Bites ke handcrafted, 100% supari & tobacco-free gift hampers guests hamesha yaad rakhte hain! 🎁\n\n` +
+        `Custom gifting ke liye bas 2 choti baatein batayein:\n` +
+        `1. Lagbhag kitne boxes chahiye? (e.g. 50, 200, 500+)\n` +
+        `2. Function ya delivery date kya hai?\n\n` +
+        `Hamari management team aapke requirement ke hisaab se personalized trial box aur custom branding details share karegi! ✨`;
+
+      await this.whatsappProvider.sendMessage({
+        type: 'interactive',
+        to: fromPhone,
+        body: b2bMsg,
+        buttons: [
+          { id: 'btn_talk_human', title: '👤 Speak with Founder' },
+          { id: 'btn_browse_catalog', title: '🛒 Browse Treats' },
+        ],
+      });
+
+      await this.platformRepo
+        .createEscalationTicket(
+          conversation.id,
+          fromPhone,
+          customerName,
+          `B2B_CORPORATE_GIFTING: ${rawText.slice(0, 200)}`,
+        )
+        .catch((err) => logger.warn({ err }, 'Non-fatal error creating B2B escalation ticket'));
+
+      await this.platformRepo.appendMessage(conversation.id, fromPhone, 'assistant', b2bMsg);
+
+      return {
+        action: 'answered',
+        responseText: b2bMsg,
+        customerIdentified: Boolean(customer),
+        customerId: customer?.id,
+        conversationId: conversation.id,
+      };
+    }
+
+    // -------------------------------------------------------------------------
     // 6. Interactive Catalog Browse Action & Native Catalog Dispatch
     // -------------------------------------------------------------------------
     if (buttonId === 'btn_browse_catalog') {
@@ -974,6 +1115,12 @@ export class SupportOrchestrator {
     };
 
     let selectedPack = buttonId ? packSizeMap[buttonId] : undefined;
+    if (buttonId === 'btn_view_seeds_fusion') {
+      selectedPack = packSizeMap.btn_size_seeds_200g;
+    } else if (buttonId === 'btn_view_trio_pack') {
+      selectedPack = packSizeMap.btn_size_trio_350g;
+    }
+
     if (!selectedPack && rawText) {
       if (/\b(paan|mukhwas)\b.*\b150g\b/i.test(rawText) || rawText.trim() === '150g') {
         selectedPack = packSizeMap.btn_size_paan_150g;

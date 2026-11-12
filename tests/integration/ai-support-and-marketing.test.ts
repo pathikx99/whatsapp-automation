@@ -138,7 +138,7 @@ describe('AI Support and Delivery Status Guardrails', () => {
       isConfigured: () => true,
       generateResponse: vi.fn().mockResolvedValue({
         content:
-          '[ESCALATE: Customer received cracked Coconut Crunch jar with glass fragments, requires refund/replacement] Hello Priya! 🙏 I have flagged this for our human support team and transferred your order details and full conversation history.',
+          '[ESCALATE: Customer received torn Coconut Crunch packet with spilled contents, requires refund/replacement] Hello Priya! 🙏 I have flagged this for our human support team and transferred your order details and full conversation history.',
         usage: { promptTokens: 50, completionTokens: 50, totalTokens: 100 },
       }),
     };
@@ -155,7 +155,7 @@ describe('AI Support and Delivery Status Guardrails', () => {
     const result = await autonomousOrchestrator.processMessage({
       from: '919876543299',
       messageId: 'test_auto_escalate_1',
-      body: 'My jar arrived broken and has glass inside!',
+      body: 'My packet arrived torn and damaged!',
       senderName: 'Priya',
     });
 
@@ -174,7 +174,7 @@ describe('AI Support and Delivery Status Guardrails', () => {
     const tickets = await platformRepo.getEscalationTickets('open');
     const matchingTicket = tickets.find((t) => t.phoneNumber === '919876543299');
     expect(matchingTicket).toBeDefined();
-    expect(matchingTicket?.reason).toContain('cracked Coconut Crunch jar');
+    expect(matchingTicket?.reason).toContain('torn Coconut Crunch packet');
 
     // 5. Admin WhatsApp received full context dossier alert with transcript
     const calls = vi.mocked(mockWhatsAppProvider.sendMessage).mock.calls;
@@ -182,7 +182,7 @@ describe('AI Support and Delivery Status Guardrails', () => {
       (c) => c[0].to === '919999988888' && c[0].body?.includes('Support Escalation Alert'),
     );
     expect(adminAlert).toBeDefined();
-    expect(adminAlert?.[0].body).toContain('Customer received cracked Coconut Crunch jar');
+    expect(adminAlert?.[0].body).toContain('Customer received torn Coconut Crunch packet');
     expect(adminAlert?.[0].body).toContain('Conversation Transcript:');
     expect(adminAlert?.[0].body).toContain('Order History:');
     expect(adminAlert?.[0].body).toContain('wa.me/919876543299');
