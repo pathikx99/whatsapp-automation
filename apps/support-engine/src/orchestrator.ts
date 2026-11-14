@@ -201,7 +201,8 @@ export class SupportOrchestrator {
 
     const adminSecret =
       config.ADMIN_API_KEY ||
-      (process.env.NODE_ENV === 'production' ? config.ECOMMERCE_WEBHOOK_SECRET : undefined);
+      (process.env.NODE_ENV === 'production' ? config.ECOMMERCE_WEBHOOK_SECRET : undefined) ||
+      'MintaraBites@010101';
     const baseUrl =
       process.env.DASHBOARD_URL ||
       process.env.PUBLIC_APP_URL ||

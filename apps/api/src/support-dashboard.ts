@@ -223,18 +223,18 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
   <div id="auth-modal" class="modal-overlay">
     <div class="modal-card">
       <h2><span>🔐</span> Admin Authentication Required</h2>
-      <p>Enter your store's Admin Key or Webhook Secret to access real-time WhatsApp conversations and live agent chat.</p>
+      <p>Enter the store password to access real-time WhatsApp conversations and live agent chat.</p>
       
       <div id="auth-modal-error" class="modal-error"></div>
       
       <div class="modal-input-group">
-        <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">ADMIN API KEY / SECRET</label>
+        <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">ADMIN PASSWORD</label>
         <div class="modal-input-wrapper">
           <input 
             type="password" 
             id="auth-key-input" 
             class="modal-input" 
-            placeholder="Enter ADMIN_API_KEY or ECOMMERCE_WEBHOOK_SECRET..."
+            placeholder="Enter password (default: MintaraBites@010101)..."
             onkeydown="if(event.key==='Enter') saveAdminKey()"
           />
           <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility()" title="Show/Hide Key">👁️</button>
@@ -247,7 +247,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       </div>
 
       <div class="modal-hint">
-        💡 <strong>Zero Meta OTP Friction:</strong> Uses <code>ADMIN_API_KEY</code> or <code>ECOMMERCE_WEBHOOK_SECRET</code> configured on your server. You can also append <code>?key=YOUR_KEY</code> in the browser URL to login automatically.
+        💡 <strong>Zero Friction Access:</strong> Default password is <code>MintaraBites@010101</code> (or your server's <code>ADMIN_API_KEY</code>). You can also append <code>?key=MintaraBites@010101</code> in the browser URL to login automatically.
       </div>
     </div>
   </div>
@@ -271,6 +271,8 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         const queryKey = urlParams.get('key') || urlParams.get('admin_key') || urlParams.get('adminKey') || urlParams.get('token');
         if (queryKey) {
           localStorage.setItem('d2c_admin_key', queryKey.trim());
+        } else if (!localStorage.getItem('d2c_admin_key')) {
+          localStorage.setItem('d2c_admin_key', 'MintaraBites@010101');
         }
         targetConvId = urlParams.get('conv') || urlParams.get('conversationId') || urlParams.get('id') || urlParams.get('phone');
         const cleanUrl = window.location.pathname;
@@ -294,7 +296,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         modal.style.display = 'flex';
         const input = document.getElementById('auth-key-input');
         if (input) {
-          input.value = localStorage.getItem('d2c_admin_key') || '';
+          input.value = localStorage.getItem('d2c_admin_key') || 'MintaraBites@010101';
           input.focus();
         }
         const errEl = document.getElementById('auth-modal-error');
@@ -383,7 +385,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     }
 
     function getAuthHeaders(extraHeaders = {}) {
-      const key = localStorage.getItem('d2c_admin_key') || '';
+      const key = localStorage.getItem('d2c_admin_key') || 'MintaraBites@010101';
       const headers = { ...extraHeaders };
       if (key) {
         headers['x-admin-key'] = key;
