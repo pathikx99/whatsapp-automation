@@ -75,6 +75,11 @@ export interface PlatformConversation {
   updatedAt: string;
 }
 
+export interface PlatformConversationListItem extends PlatformConversation {
+  lastMessage?: PlatformMessage;
+  openTicket?: PlatformTicket;
+}
+
 export interface PlatformMessage {
   id: string;
   conversationId: string;
@@ -330,6 +335,58 @@ export class PlatformRepository {
       createdAt: data.created_at,
       updatedAt: data.updated_at,
     };
+  }
+
+  public async getConversationsList(options: {
+    status?: string;
+    search?: string;
+    limit?: number;
+  } = {}): Promise<PlatformConversationListItem[]> {
+    const limit = options.limit || 50;
+    let query = this.client
+      .from('support_conversations')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(limit);
+
+    if (options.status && options.status !== 'all') {
+      query = query.eq('status', options.status);
+    }
+
+    const { data: convs, error } = await query;
+    if (error || !convs) {
+      logger.error({ error }, 'Failed fetching support_conversations list');
+      return [];
+    }
+
+    let filtered = convs;
+    if (options.search) {
+      const s = options.search.toLowerCase().trim();
+      filtered = filtered.filter(
+        (c: any) =>
+          (c.phone_number && c.phone_number.toLowerCase().includes(s)) ||
+          (c.customer_name && c.customer_name.toLowerCase().includes(s)),
+      );
+    }
+
+    const result = await Promise.all(
+      filtered.map(async (c: any) => {
+        const recent = await this.getRecentMessages(c.phone_number, 1).catch(() => []);
+        return {
+          id: c.id,
+          phoneNumber: c.phone_number,
+          customerName: c.customer_name,
+          status: c.status,
+          metadata: c.metadata,
+          escalatedAt: c.escalated_at,
+          createdAt: c.created_at,
+          updatedAt: c.updated_at,
+          lastMessage: recent && recent.length > 0 ? recent[recent.length - 1] : undefined,
+        };
+      }),
+    );
+
+    return result;
   }
 
   // ---------------------------------------------------------------------------

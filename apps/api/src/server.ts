@@ -1367,6 +1367,85 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   );
 
   // ---------------------------------------------------------------------------
+  // 5.0 All Conversations & Chat Ingestion API
+  // ---------------------------------------------------------------------------
+  app.get('/api/support/conversations', { preHandler: requireAdminAuth }, async (req, reply) => {
+    const query = req.query as { status?: string; search?: string; limit?: string };
+    const limit = query.limit ? parseInt(query.limit, 10) : 50;
+    const conversations = await platformRepo.getConversationsList({
+      status: query.status,
+      search: query.search,
+      limit: Number.isFinite(limit) ? limit : 50,
+    });
+    return reply.status(200).send({ status: 'ok', count: conversations.length, conversations });
+  });
+
+  app.get('/api/support/conversations/:id', { preHandler: requireAdminAuth }, async (req, reply) => {
+    const params = req.params as { id: string };
+    const conversation = await platformRepo.getConversationById(params.id);
+    if (!conversation) {
+      return reply.status(404).send({ error: 'Conversation not found' });
+    }
+
+    const [messages, customer, openTickets, ndrInstructions] = await Promise.all([
+      platformRepo.getRecentMessages(conversation.phoneNumber, 100).catch(() => []),
+      ecommerceAdapter.getCustomerByPhone(conversation.phoneNumber).catch(() => null),
+      platformRepo.getEscalationTickets('open').catch(() => []),
+      platformRepo.getNdrInstructions(conversation.phoneNumber).catch(() => []),
+    ]);
+
+    let orders: any[] = [];
+    if (customer?.id) {
+      orders = await ecommerceAdapter.getCustomerOrders(customer.id).catch(() => []);
+    }
+
+    const ticket = openTickets.find(
+      (t) => t.conversationId === conversation.id || t.phoneNumber === conversation.phoneNumber,
+    );
+
+    return reply.status(200).send({
+      status: 'ok',
+      conversation,
+      messages,
+      ticket: ticket || null,
+      ndrInstructions,
+      customerDossier: {
+        customer,
+        orders,
+      },
+    });
+  });
+
+  app.post(
+    '/api/support/conversations/:id/status',
+    { preHandler: requireAdminAuth },
+    async (req, reply) => {
+      const params = req.params as { id: string };
+      const body = req.body as { status: 'active' | 'escalated' | 'closed' | 'resolved' };
+
+      if (!body?.status || !['active', 'escalated', 'closed', 'resolved'].includes(body.status)) {
+        return reply
+          .status(400)
+          .send({ error: 'Invalid status. Must be active, escalated, or closed.' });
+      }
+
+      const conversation = await platformRepo.getConversationById(params.id);
+      if (!conversation) {
+        return reply.status(404).send({ error: 'Conversation not found' });
+      }
+
+      const targetStatus = body.status === 'resolved' ? 'closed' : body.status;
+      await platformRepo.updateConversationStatus(conversation.phoneNumber, targetStatus);
+
+      return reply.status(200).send({
+        status: 'ok',
+        conversationId: conversation.id,
+        newStatus: targetStatus,
+      });
+    },
+  );
+
+  // ---------------------------------------------------------------------------
   // 5.1 Human Agent Live-Reply API (Live Agent Chat)
   // ---------------------------------------------------------------------------
   app.post(
