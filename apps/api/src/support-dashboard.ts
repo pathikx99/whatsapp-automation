@@ -4,7 +4,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${brandName} - WhatsApp Command Center</title>
+  <title>${brandName} - WhatsApp Command Center | Live Agent Support Desk (Zero Meta OTP Friction)</title>
   <style>
     :root {
       --bg: #090d16;
@@ -37,6 +37,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     .badge-success { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
     .badge-escalated { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
     .badge-active { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
+    .badge-warning { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
     .badge-resolved { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.3); }
     .badge-count { background: #334155; color: #fff; padding: 1px 6px; border-radius: 10px; font-size: 0.7rem; }
     
@@ -109,6 +110,19 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     .ndr-box { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 6px; padding: 10px; font-size: 0.82rem; color: #fde68a; margin-top: 8px; }
     
     .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: 0.88rem; text-align: center; padding: 24px; line-height: 1.5; }
+
+    /* Modal Backdrop & Dialog */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); display: none; justify-content: center; align-items: center; z-index: 1000; }
+    .modal-card { background: var(--panel-bg); border: 1px solid var(--border); border-radius: 12px; width: 92%; max-width: 440px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+    .modal-card h2 { font-size: 1.15rem; font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; color: #fff; }
+    .modal-card p { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 16px; line-height: 1.45; }
+    .modal-input-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+    .modal-input-wrapper { display: flex; gap: 6px; }
+    .modal-input { flex: 1; background: #090d16; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; color: #fff; font-size: 0.9rem; outline: none; }
+    .modal-input:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .modal-error { color: var(--danger); font-size: 0.78rem; margin-bottom: 12px; display: none; }
+    .modal-hint { font-size: 0.72rem; color: var(--text-muted); line-height: 1.4; margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); }
   </style>
 </head>
 <body>
@@ -116,9 +130,11 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     <h1>
       <span>🌿</span> ${brandName} WhatsApp Command Center
       <span class="badge badge-success">● Live Official Meta API</span>
+      <span class="badge badge-active" style="font-size: 0.68rem; opacity: 0.85;">Live Agent Support Desk (Zero Meta OTP Friction)</span>
     </h1>
     <div class="header-actions">
-      <span id="sync-status" class="badge badge-success">● Connected</span>
+      <span id="sync-status" class="badge badge-warning">⚡ Connecting...</span>
+      <button id="btn-admin-key" class="btn btn-secondary" onclick="openKeyModal()">🔑 Admin Key</button>
       <button class="btn btn-secondary" onclick="refreshCurrentView()">🔄 Refresh</button>
     </div>
   </header>
@@ -203,6 +219,39 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     </div>
   </div>
 
+  <!-- Admin Auth Modal -->
+  <div id="auth-modal" class="modal-overlay">
+    <div class="modal-card">
+      <h2><span>🔐</span> Admin Authentication Required</h2>
+      <p>Enter your store's Admin Key or Webhook Secret to access real-time WhatsApp conversations and live agent chat.</p>
+      
+      <div id="auth-modal-error" class="modal-error"></div>
+      
+      <div class="modal-input-group">
+        <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">ADMIN API KEY / SECRET</label>
+        <div class="modal-input-wrapper">
+          <input 
+            type="password" 
+            id="auth-key-input" 
+            class="modal-input" 
+            placeholder="Enter ADMIN_API_KEY or ECOMMERCE_WEBHOOK_SECRET..."
+            onkeydown="if(event.key==='Enter') saveAdminKey()"
+          />
+          <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility()" title="Show/Hide Key">👁️</button>
+        </div>
+      </div>
+      
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeKeyModal()">Cancel</button>
+        <button id="btn-save-key" class="btn btn-primary" onclick="saveAdminKey()">Unlock Command Center 🚀</button>
+      </div>
+
+      <div class="modal-hint">
+        💡 <strong>Zero Meta OTP Friction:</strong> Uses <code>ADMIN_API_KEY</code> or <code>ECOMMERCE_WEBHOOK_SECRET</code> configured on your server. You can also append <code>?key=YOUR_KEY</code> in the browser URL to login automatically.
+      </div>
+    </div>
+  </div>
+
   <script>
     let currentConversationId = null;
     let currentConversation = null;
@@ -211,6 +260,117 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     let activeFilter = 'all';
     let searchQuery = '';
     let pollInterval = null;
+    let isAuthModalOpen = false;
+    let authFailed = false;
+    let targetConvId = null;
+
+    // 0. Auto-check URL query parameters on initial boot: ?key=... & ?conv=...
+    (function checkUrlAuth() {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryKey = urlParams.get('key') || urlParams.get('admin_key') || urlParams.get('adminKey') || urlParams.get('token');
+        if (queryKey) {
+          localStorage.setItem('d2c_admin_key', queryKey.trim());
+        }
+        targetConvId = urlParams.get('conv') || urlParams.get('conversationId') || urlParams.get('id') || urlParams.get('phone');
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      } catch (e) {
+        // Safe query param parse fallback
+      }
+    })();
+
+    function setSyncStatus(status, text) {
+      const badge = document.getElementById('sync-status');
+      if (!badge) return;
+      badge.className = 'badge ' + (status === 'ok' ? 'badge-success' : status === 'warn' ? 'badge-warning' : 'badge-escalated');
+      badge.innerHTML = text;
+    }
+
+    function openKeyModal(errorMsg = '') {
+      isAuthModalOpen = true;
+      const modal = document.getElementById('auth-modal');
+      if (modal) {
+        modal.style.display = 'flex';
+        const input = document.getElementById('auth-key-input');
+        if (input) {
+          input.value = localStorage.getItem('d2c_admin_key') || '';
+          input.focus();
+        }
+        const errEl = document.getElementById('auth-modal-error');
+        if (errEl) {
+          errEl.innerText = errorMsg;
+          errEl.style.display = errorMsg ? 'block' : 'none';
+        }
+      }
+    }
+
+    function closeKeyModal() {
+      isAuthModalOpen = false;
+      const modal = document.getElementById('auth-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function togglePasswordVisibility() {
+      const input = document.getElementById('auth-key-input');
+      if (input) {
+        input.type = input.type === 'password' ? 'text' : 'password';
+      }
+    }
+
+    async function saveAdminKey() {
+      const input = document.getElementById('auth-key-input');
+      const key = (input?.value || '').trim();
+      if (!key) {
+        const errEl = document.getElementById('auth-modal-error');
+        if (errEl) {
+          errEl.innerText = 'Please enter an admin key.';
+          errEl.style.display = 'block';
+        }
+        return;
+      }
+
+      const saveBtn = document.getElementById('btn-save-key');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = 'Verifying...';
+      }
+
+      try {
+        const res = await fetch('/api/support/auth/verify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-key': key,
+          },
+          body: JSON.stringify({ key }),
+        });
+
+        if (res.ok) {
+          localStorage.setItem('d2c_admin_key', key);
+          authFailed = false;
+          closeKeyModal();
+          setSyncStatus('warn', '⚡ Loading...');
+          await loadConversations();
+        } else {
+          const errEl = document.getElementById('auth-modal-error');
+          if (errEl) {
+            errEl.innerText = 'Invalid admin key. Please verify your server credentials.';
+            errEl.style.display = 'block';
+          }
+        }
+      } catch (err) {
+        localStorage.setItem('d2c_admin_key', key);
+        authFailed = false;
+        closeKeyModal();
+        await loadConversations();
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerText = 'Unlock Command Center 🚀';
+        }
+      }
+    }
 
     function escapeHtml(str) {
       if (str === null || str === undefined) return '';
@@ -233,12 +393,22 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
 
     async function handleAuthChallenge(res) {
       if (res.status === 401) {
-        const key = prompt('Admin authentication required. Enter your admin key:');
-        if (key) {
-          localStorage.setItem('d2c_admin_key', key.trim());
-          await loadConversations();
-          return true;
+        authFailed = true;
+        setSyncStatus('error', '🔒 Auth Required');
+        const container = document.getElementById('conversations-container');
+        if (container && conversations.length === 0) {
+          container.innerHTML = 
+            '<div class="empty-state">' +
+              '<div style="font-size: 2rem; margin-bottom: 8px;">🔒</div>' +
+              '<div style="font-weight: 600; color: #fff; margin-bottom: 4px;">Authentication Required</div>' +
+              '<div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 14px;">Enter your Admin Key to view live conversations.</div>' +
+              '<button class="btn btn-primary" onclick="openKeyModal()">🔑 Enter Admin Key</button>' +
+            '</div>';
         }
+        if (!isAuthModalOpen) {
+          openKeyModal('Admin credentials required. Enter your Admin Key to unlock:');
+        }
+        return true;
       }
       return false;
     }
@@ -264,10 +434,23 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         if (await handleAuthChallenge(res)) return;
         const data = await res.json();
         conversations = data.conversations || [];
+        authFailed = false;
+        setSyncStatus('ok', '● Live Connected');
         updateCounts();
         renderConversationsList();
+
+        if (!currentConversationId && targetConvId) {
+          const match = conversations.find(c => c.id === targetConvId || c.phoneNumber === targetConvId);
+          if (match) {
+            selectConversation(match.id);
+          } else {
+            selectConversation(targetConvId);
+          }
+          targetConvId = null;
+        }
       } catch (err) {
         console.error('Failed loading conversations', err);
+        setSyncStatus('error', '⚠️ Network Error');
       }
     }
 
@@ -275,7 +458,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       const allCount = conversations.length;
       const attentionCount = conversations.filter(c => c.status === 'escalated').length;
       const activeCount = conversations.filter(c => c.status === 'active').length;
-      const resolvedCount = conversations.filter(c => c.status === 'resolved').length;
+      const resolvedCount = conversations.filter(c => c.status === 'resolved' || c.status === 'closed').length;
 
       document.getElementById('count-all').innerText = allCount;
       document.getElementById('count-attention').innerText = attentionCount;
@@ -287,7 +470,11 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       const container = document.getElementById('conversations-container');
       
       let filtered = conversations.filter(c => {
-        if (activeFilter !== 'all' && c.status !== activeFilter) return false;
+        if (activeFilter === 'resolved') {
+          if (c.status !== 'resolved' && c.status !== 'closed') return false;
+        } else if (activeFilter !== 'all' && c.status !== activeFilter) {
+          return false;
+        }
         if (searchQuery) {
           const matchName = (c.customerName || '').toLowerCase().includes(searchQuery);
           const matchPhone = (c.phoneNumber || '').toLowerCase().includes(searchQuery);
@@ -378,48 +565,48 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       const toggleBtn = document.getElementById('btn-toggle-bot');
       const resolveBtn = document.getElementById('btn-resolve-ticket');
 
+      if (!currentConversation) return;
+
       if (currentConversation.status === 'escalated') {
         statusBadge.className = 'badge badge-escalated';
-        statusBadge.innerText = '👤 Human Takeover (AI Paused)';
-        toggleBtn.className = 'btn btn-info';
-        toggleBtn.innerText = '🤖 Resume AI Assistant';
+        statusBadge.innerHTML = '🚨 Needs Human Support';
+        toggleBtn.className = 'btn btn-primary';
+        toggleBtn.innerHTML = '▶️ Re-enable AI Bot';
+        if (resolveBtn) resolveBtn.style.display = 'inline-flex';
       } else {
         statusBadge.className = 'badge badge-active';
-        statusBadge.innerText = '🤖 AI Concierge Handling';
+        statusBadge.innerHTML = '🤖 AI Handling';
         toggleBtn.className = 'btn btn-warning';
-        toggleBtn.innerText = '⏸️ Pause AI (Take Over)';
-      }
-
-      if (currentTicket && currentTicket.status === 'open') {
-        resolveBtn.style.display = 'inline-flex';
-      } else {
-        resolveBtn.style.display = 'none';
+        toggleBtn.innerHTML = '⏸️ Pause AI (Take Over)';
+        if (resolveBtn) resolveBtn.style.display = 'none';
       }
     }
 
     function renderMessages(messages) {
       const container = document.getElementById('messages-container');
-      if (messages.length === 0) {
-        container.innerHTML = '<div class="empty-state">No messages in this chat history yet.</div>';
+      if (!messages || messages.length === 0) {
+        container.innerHTML = '<div class="empty-state">No messages in this conversation yet.</div>';
         return;
       }
 
       container.innerHTML = messages.map(m => {
-        let roleClass = 'msg-user';
-        let roleLabel = 'Customer';
+        let bubbleClass = 'msg-user';
+        let senderTag = '👤 Customer';
         if (m.role === 'assistant') {
-          roleClass = 'msg-bot';
-          roleLabel = '🤖 AI Concierge';
+          bubbleClass = 'msg-bot';
+          senderTag = '🤖 Mintara AI Concierge';
         } else if (m.role === 'human_agent') {
-          roleClass = 'msg-agent';
-          roleLabel = '👤 Agent (You)';
+          bubbleClass = 'msg-agent';
+          senderTag = '✍️ Human Agent';
         }
 
-        const dateObj = new Date(m.createdAt || m.created_at || Date.now());
-        const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const date = new Date(m.createdAt);
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        return '<div class="message-bubble ' + roleClass + '">' +
-          '<div class="msg-sender-tag"><span>' + roleLabel + '</span></div>' +
+        return '<div class="message-bubble ' + bubbleClass + '">' +
+          '<div class="msg-sender-tag">' +
+            '<span>' + escapeHtml(senderTag) + '</span>' +
+          '</div>' +
           '<div>' + escapeHtml(m.content) + '</div>' +
           '<div class="msg-meta">' + escapeHtml(timeStr) + '</div>' +
         '</div>';
@@ -428,54 +615,70 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       container.scrollTop = container.scrollHeight;
     }
 
-    function renderDossier(dossier, ndrInstructions, conv, ticket) {
+    function renderDossier(dossier, ndrList, conv, ticket) {
       const container = document.getElementById('dossier-container');
-      const cust = dossier?.customer;
+      const customer = dossier?.customer;
       const orders = dossier?.orders || [];
 
-      let html = '<div class="dossier-section">' +
-        '<h3>Customer Intelligence</h3>' +
-        '<div class="dossier-row"><span class="label">Name:</span><span class="value">' + escapeHtml(cust?.firstName || conv.customerName || 'Friend') + '</span></div>' +
-        '<div class="dossier-row"><span class="label">Phone:</span><span class="value">+' + escapeHtml(conv.phoneNumber) + '</span></div>' +
-        '<div class="dossier-row"><span class="label">Total Orders:</span><span class="value">' + (cust?.totalOrders ?? orders.length) + '</span></div>' +
-        '<div class="dossier-row"><span class="label">Lifetime Spend:</span><span class="value">₹' + (cust?.totalSpend ?? orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0)) + '</span></div>' +
-      '</div>';
+      let html = '';
 
-      if (ticket && ticket.status === 'open') {
-        html += '<div class="dossier-section">' +
-          '<h3 style="color: #f87171;">⚠️ Open Escalation Ticket</h3>' +
-          '<div class="ndr-box" style="background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5;">' +
-            '<strong>Reason:</strong> ' + escapeHtml(ticket.reason || 'Customer requested agent') +
-          '</div>' +
-        '</div>';
-      }
-
-      if (ndrInstructions && ndrInstructions.length > 0) {
-        const latestNdr = ndrInstructions[ndrInstructions.length - 1];
-        html += '<div class="dossier-section">' +
-          '<h3 style="color: #fbbf24;">📍 Courier Landmark Update</h3>' +
-          '<div class="ndr-box">' +
-            escapeHtml(latestNdr.instructions) +
-          '</div>' +
-        '</div>';
-      }
-
-      html += '<div class="dossier-section">' +
-        '<h3>Recent Store Orders (' + orders.length + ')</h3>';
-
-      if (orders.length === 0) {
-        html += '<div style="font-size: 0.8rem; color: var(--text-muted);">No past orders found in store DB.</div>';
+      // Section 1: Customer Profile
+      html += '<div class="dossier-section">';
+      html += '<h3>👤 Customer Dossier</h3>';
+      if (customer) {
+        html += '<div class="dossier-row"><span class="label">Name:</span><span class="value">' + escapeHtml(customer.firstName + ' ' + (customer.lastName || '')) + '</span></div>';
+        html += '<div class="dossier-row"><span class="label">Phone:</span><span class="value">+' + escapeHtml(conv.phoneNumber) + '</span></div>';
+        if (customer.email) html += '<div class="dossier-row"><span class="label">Email:</span><span class="value">' + escapeHtml(customer.email) + '</span></div>';
+        html += '<div class="dossier-row"><span class="label">Total Spent:</span><span class="value" style="color: var(--accent);">₹' + escapeHtml(customer.totalSpent || 0) + '</span></div>';
       } else {
-        html += orders.slice(0, 4).map(o => {
-          const itemsSummary = (o.items || []).map(i => i.quantity + 'x ' + escapeHtml(i.productName)).join(', ') || 'Handcrafted Treats';
+        html += '<div class="dossier-row"><span class="label">Phone:</span><span class="value">+' + escapeHtml(conv.phoneNumber) + '</span></div>';
+        html += '<div class="dossier-row"><span class="label">Account:</span><span class="value">Guest / Inbound Lead</span></div>';
+      }
+      html += '</div>';
+
+      // Section 2: Escalation Attention Info
+      if (ticket) {
+        html += '<div class="dossier-section">';
+        html += '<h3>🚨 Escalation Context</h3>';
+        html += '<div class="ndr-box">';
+        html += '<strong>Reason:</strong> ' + escapeHtml(ticket.reason || 'Requested Human Agent') + '<br/>';
+        html += '<span style="font-size: 0.72rem; opacity: 0.8;">Ticket ID: #' + escapeHtml(ticket.id.slice(0, 8)) + '</span>';
+        html += '</div>';
+        html += '</div>';
+      }
+
+      // Section 3: Recent Orders & Tracking
+      html += '<div class="dossier-section">';
+      html += '<h3>📦 Order History (' + orders.length + ')</h3>';
+      if (orders.length === 0) {
+        html += '<div style="font-size: 0.8rem; color: var(--text-muted); padding: 8px 0;">No past orders recorded in store system.</div>';
+      } else {
+        html += orders.slice(0, 3).map(o => {
+          const itemsSummary = (o.items || []).map(i => escapeHtml(i.productName + ' (' + i.quantity + 'x)')).join(', ');
           return '<div class="order-card">' +
-            '<div class="order-header"><span>#' + escapeHtml(o.orderNumber || o.id.slice(0, 8)) + '</span><span>₹' + o.totalAmount + '</span></div>' +
-            '<div style="font-size: 0.72rem; color: #4ade80;">Status: ' + escapeHtml(o.status) + '</div>' +
+            '<div class="order-header">' +
+              '<span>#' + escapeHtml(o.orderNumber) + '</span>' +
+              '<span class="badge badge-active" style="text-transform: capitalize;">' + escapeHtml(o.status) + '</span>' +
+            '</div>' +
+            '<div style="font-weight: 500; color: var(--accent);">₹' + escapeHtml(o.totalAmount) + '</div>' +
             '<div class="items-list">' + itemsSummary + '</div>' +
           '</div>';
         }).join('');
       }
       html += '</div>';
+
+      // Section 4: Delivery / Landmark Intelligence (NDR)
+      if (ndrList && ndrList.length > 0) {
+        html += '<div class="dossier-section">';
+        html += '<h3>📍 Delivery Instructions</h3>';
+        html += ndrList.map(n => 
+          '<div class="ndr-box" style="margin-bottom: 6px;">' +
+            '<div>' + escapeHtml(n.instructions) + '</div>' +
+            '<div style="font-size: 0.68rem; margin-top: 4px; opacity: 0.8;">Forwarded to courier partner</div>' +
+          '</div>'
+        ).join('');
+        html += '</div>';
+      }
 
       container.innerHTML = html;
     }
@@ -583,6 +786,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
 
     // Background auto-refresh polling every 4 seconds
     pollInterval = setInterval(async () => {
+      if (isAuthModalOpen || authFailed) return;
       await loadConversations();
       if (currentConversationId) {
         try {

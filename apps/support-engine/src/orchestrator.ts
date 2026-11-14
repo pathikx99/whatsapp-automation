@@ -88,6 +88,7 @@ export class SupportOrchestrator {
   private defaultButtons: WhatsAppButtonAction[];
 
   private customBusinessProfileProvided: boolean = false;
+  private phoneQueues: Map<string, Promise<unknown>> = new Map();
 
   constructor(options: SupportOrchestratorOptions = {}) {
     this.ecommerceAdapter = options.ecommerceAdapter || createEcommerceAdapter();
@@ -189,8 +190,29 @@ export class SupportOrchestrator {
 
     // 5. Notify Store Admin via WhatsApp alert dossier
     const config = getConfig();
-    if (config.ADMIN_ALERT_PHONE_NUMBER) {
-      const adminDossier = formatTemplate(
+    const rawAdminPhone =
+      config.ADMIN_ALERT_PHONE_NUMBER ||
+      this.businessProfile.brand.links?.supportPhone ||
+      '917490095115';
+    let adminPhoneNumber = rawAdminPhone.replace(/\D/g, '');
+    if (adminPhoneNumber.length === 10 && /^[6-9]/.test(adminPhoneNumber)) {
+      adminPhoneNumber = `91${adminPhoneNumber}`;
+    }
+
+    const adminSecret =
+      config.ADMIN_API_KEY ||
+      (process.env.NODE_ENV === 'production' ? config.ECOMMERCE_WEBHOOK_SECRET : undefined);
+    const baseUrl =
+      process.env.DASHBOARD_URL ||
+      process.env.PUBLIC_APP_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      'https://whatsapp-automation-42a3.onrender.com';
+    const dashboardLink = `${baseUrl.replace(/\/+$/, '')}/dashboard/support?conv=${conversationId}${
+      adminSecret ? `&key=${adminSecret}` : ''
+    }`;
+
+    if (adminPhoneNumber) {
+      let adminDossier = formatTemplate(
         this.businessProfile.supportMessages.escalationAdminDossier,
         {
           brandName: this.businessProfile.brand.name,
@@ -200,13 +222,28 @@ export class SupportOrchestrator {
           ordersSummary,
           escalationReason: reason,
           transcript,
+          dashboardLink,
         },
       );
+
+      if (!adminDossier.includes(dashboardLink)) {
+        adminDossier = adminDossier.replace(
+          /(• \*Direct Chat:\* [^\n]+)/,
+          `$1\n• *Live Chat & Command Center:* ${dashboardLink}`,
+        );
+      }
+
+      if (!adminDossier.includes('escalated to you')) {
+        adminDossier = adminDossier.replace(
+          /(\*Support Escalation Alert\*)/,
+          `$1\n\n📢 *A customer chat has been escalated to you!*`,
+        );
+      }
 
       void this.whatsappProvider
         .sendMessage({
           type: 'text',
-          to: config.ADMIN_ALERT_PHONE_NUMBER,
+          to: adminPhoneNumber,
           body: adminDossier,
         })
         .catch((err) => {
@@ -246,6 +283,24 @@ export class SupportOrchestrator {
   }
 
   public async processMessage(payload: IncomingMessagePayload): Promise<SupportResolutionResult> {
+    const fromPhone = payload.from;
+    const previous = this.phoneQueues.get(fromPhone) || Promise.resolve();
+
+    const task = previous
+      .catch(() => {})
+      .then(() => this.processMessageInternal(payload));
+
+    this.phoneQueues.set(fromPhone, task);
+    task.finally(() => {
+      if (this.phoneQueues.get(fromPhone) === task) {
+        this.phoneQueues.delete(fromPhone);
+      }
+    });
+
+    return task as Promise<SupportResolutionResult>;
+  }
+
+  private async processMessageInternal(payload: IncomingMessagePayload): Promise<SupportResolutionResult> {
     const rawText = (payload.body || '').trim();
     const fromPhone = payload.from;
     const buttonId = payload.interactiveButtonId;
