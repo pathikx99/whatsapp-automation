@@ -240,7 +240,7 @@
       "price": "₹149 (150g) / ₹249 (300g) / ₹399 (500g)",
       "description": "Traditional Calcuttia paan leaf infusion with natural rose gulkand, sweet fennel & roasted dhanadal. 100% supari-free. Keep refrigerated upon arrival.",
       "requiresRefrigeration": true,
-      "url": "https://mintarabites.com/products/artisanal-paan-mukhwas",
+      "url": "https://mintarabites.com/products/paan-mukhwas",
       "checkoutUrl": "https://mintarabites.com/cart",
       "variants": [
         {
@@ -249,7 +249,7 @@
           "buttonLabel": "🌿 Paan 150g (₹149)",
           "price": 149,
           "sku": "paan-mukhwas-150g",
-          "checkoutOrBookingUrl": "https://mintarabites.com/products/artisanal-paan-mukhwas?variant=paan-mukhwas-150g"
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/paan-mukhwas?variant=paan-mukhwas-150g"
         },
         {
           "id": "btn_size_paan_300g",
@@ -257,7 +257,7 @@
           "buttonLabel": "🌿 Paan 300g (₹249)",
           "price": 249,
           "sku": "paan-mukhwas-300g",
-          "checkoutOrBookingUrl": "https://mintarabites.com/products/artisanal-paan-mukhwas?variant=paan-mukhwas-300g"
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/paan-mukhwas?variant=paan-mukhwas-300g"
         },
         {
           "id": "btn_size_paan_500g",
@@ -265,7 +265,7 @@
           "buttonLabel": "🌿 Paan 500g (₹399)",
           "price": 399,
           "sku": "paan-mukhwas-500g",
-          "checkoutOrBookingUrl": "https://mintarabites.com/products/artisanal-paan-mukhwas?variant=paan-mukhwas-500g"
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/paan-mukhwas?variant=paan-mukhwas-500g"
         }
       ]
     },
@@ -277,7 +277,7 @@
       "price": "₹149 (100g) / ₹249 (200g)",
       "description": "6-seed powerhouse blend (white & black sesame, pumpkin, watermelon, sunflower, flax) lightly salted or zesty lime roasted.",
       "requiresRefrigeration": false,
-      "url": "https://mintarabites.com/products/seeds-fusion",
+      "url": "https://mintarabites.com/products/seed-fusion",
       "checkoutUrl": "https://mintarabites.com/cart",
       "variants": [
         {
@@ -286,7 +286,7 @@
           "buttonLabel": "🌱 Seeds 100g (₹149)",
           "price": 149,
           "sku": "seeds-fusion-regular-100g",
-          "checkoutOrBookingUrl": "https://mintarabites.com/products/seeds-fusion?variant=seeds-fusion-regular-100g"
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/seed-fusion?variant=seeds-fusion-regular-100g"
         },
         {
           "id": "btn_size_seeds_200g",
@@ -294,7 +294,7 @@
           "buttonLabel": "🌱 Seeds 200g (₹249)",
           "price": 249,
           "sku": "seeds-fusion-regular-200g",
-          "checkoutOrBookingUrl": "https://mintarabites.com/products/seeds-fusion?variant=seeds-fusion-regular-200g"
+          "checkoutOrBookingUrl": "https://mintarabites.com/products/seed-fusion?variant=seeds-fusion-regular-200g"
         }
       ]
     },

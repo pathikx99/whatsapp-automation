@@ -43,7 +43,7 @@ describe('Universal AI Business Synthesizer, Direct Links & Customer Engagement'
       expect(response.action).toBe('answered');
       expect(response.checkoutUrl).toBeDefined();
       expect(response.checkoutUrl).toContain(
-        'https://mintarabites.com/products/artisanal-paan-mukhwas',
+        'https://mintarabites.com/products/paan-mukhwas',
       );
       expect(response.checkoutUrl).toContain('paan-mukhwas-300g');
 
