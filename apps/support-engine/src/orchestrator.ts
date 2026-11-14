@@ -1363,13 +1363,21 @@ export class SupportOrchestrator {
       customerContextStr += `\nPast Orders Count: ${pastOrders.length}\nMost Recent Order: ${recentOrder.orderNumber || 'N/A'} (Items: ${itemsList}, Total: ₹${recentOrder.totalAmount})`;
     }
 
-    const reviewSummary = await this.platformRepo.getUnifiedReviewSummary().catch(() => null);
+    // Fetch review summaries, website testimonials, active promotion, and chat history in parallel
+    const [reviewSummary, recentWebsiteReviews, activePromo, recentMessages] = await Promise.all([
+      this.platformRepo.getUnifiedReviewSummary().catch(() => null),
+      this.ecommerceAdapter.getWebsiteReviews().catch(() => []),
+      typeof this.ecommerceAdapter?.getActivePromotion === 'function'
+        ? this.ecommerceAdapter.getActivePromotion().catch(() => null)
+        : Promise.resolve(null),
+      this.platformRepo.getRecentMessages(fromPhone, 6).catch(() => []),
+    ]);
+
     if (reviewSummary && reviewSummary.totalReviews > 0) {
       customerContextStr += `\nBrand Verified Omnichannel Rating: ${reviewSummary.averageRating}/5 ⭐ across ${reviewSummary.totalReviews} reviews (Website, Google, WhatsApp).`;
     }
 
     // Include recent verified store customer reviews so AI can quote real customer experiences
-    const recentWebsiteReviews = await this.ecommerceAdapter.getWebsiteReviews().catch(() => []);
     if (recentWebsiteReviews.length > 0) {
       const topReviewsStr = recentWebsiteReviews
         .slice(0, 4)
@@ -1381,10 +1389,6 @@ export class SupportOrchestrator {
       customerContextStr += `\n\nRecent Customer Testimonials from Website:\n${topReviewsStr}`;
     }
 
-    const activePromo =
-      typeof this.ecommerceAdapter?.getActivePromotion === 'function'
-        ? await this.ecommerceAdapter.getActivePromotion().catch(() => null)
-        : null;
     const systemPrompt = buildBusinessSystemPrompt({
       customerContext: customerContextStr,
       productCatalogContext,
@@ -1400,8 +1404,6 @@ export class SupportOrchestrator {
         : null,
     });
 
-    // Load recent multi-turn conversation messages
-    const recentMessages = await this.platformRepo.getRecentMessages(fromPhone, 6);
     const multiTurnMessages: AiChatMessage[] = [{ role: 'system', content: systemPrompt }];
 
     // Append previous dialogue turns for context
