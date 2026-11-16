@@ -102,18 +102,33 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     },
   });
 
-  // CORS restricted to configured origins
+  // CORS restricted to configured origins, self, and deployment domains
   await app.register(cors, {
     origin: (origin, cb) => {
       if (!origin) {
         cb(null, true);
         return;
       }
-      if (config.CORS_ORIGINS.includes('*') || config.CORS_ORIGINS.includes(origin)) {
-        cb(null, true);
-        return;
+      try {
+        const parsed = new URL(origin);
+        const hostname = parsed.hostname;
+        if (
+          config.CORS_ORIGINS.includes('*') ||
+          config.CORS_ORIGINS.includes(origin) ||
+          hostname === 'localhost' ||
+          hostname === '127.0.0.1' ||
+          hostname.endsWith('.onrender.com') ||
+          hostname.endsWith('.mintarabites.com') ||
+          (process.env.RENDER_EXTERNAL_URL && origin === process.env.RENDER_EXTERNAL_URL) ||
+          (process.env.PUBLIC_APP_URL && origin === process.env.PUBLIC_APP_URL)
+        ) {
+          cb(null, true);
+          return;
+        }
+      } catch {
+        // Fallback for non-standard origin
       }
-      cb(new Error('Origin not allowed by CORS policy'), false);
+      cb(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

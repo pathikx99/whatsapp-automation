@@ -134,8 +134,8 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     </h1>
     <div class="header-actions">
       <span id="sync-status" class="badge badge-warning">⚡ Connecting...</span>
-      <button id="btn-admin-key" class="btn btn-secondary" onclick="openKeyModal()">🔑 Admin Key</button>
-      <button id="btn-refresh-view" class="btn btn-secondary" onclick="refreshCurrentView()">🔄 Refresh</button>
+      <button id="btn-admin-key" class="btn btn-secondary">🔑 Admin Key</button>
+      <button id="btn-refresh-view" class="btn btn-secondary">🔄 Refresh</button>
     </div>
   </header>
 
@@ -148,14 +148,13 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
           type="text" 
           class="search-input" 
           placeholder="🔍 Search customer, phone, text..."
-          oninput="handleSearch(this.value)"
         />
       </div>
       <div class="inbox-tabs">
-        <button id="tab-all" class="tab-btn active" onclick="setFilter('all')">All <span id="count-all" class="badge-count">0</span></button>
-        <button id="tab-attention" class="tab-btn" onclick="setFilter('escalated')">🚨 Attention <span id="count-attention" class="badge-count">0</span></button>
-        <button id="tab-active" class="tab-btn" onclick="setFilter('active')">🤖 AI Active <span id="count-active" class="badge-count">0</span></button>
-        <button id="tab-resolved" class="tab-btn" onclick="setFilter('resolved')">✅ Resolved <span id="count-resolved" class="badge-count">0</span></button>
+        <button id="tab-all" class="tab-btn active">All <span id="count-all" class="badge-count">0</span></button>
+        <button id="tab-attention" class="tab-btn">🚨 Attention <span id="count-attention" class="badge-count">0</span></button>
+        <button id="tab-active" class="tab-btn">🤖 AI Active <span id="count-active" class="badge-count">0</span></button>
+        <button id="tab-resolved" class="tab-btn">✅ Resolved <span id="count-resolved" class="badge-count">0</span></button>
       </div>
       <div id="conversations-container" class="conversation-list">
         <div class="empty-state">Loading conversations...</div>
@@ -173,10 +172,10 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
           <div id="active-customer-phone" class="customer-info-sub">+91...</div>
         </div>
         <div class="chat-controls">
-          <button id="btn-toggle-bot" class="btn btn-warning" onclick="toggleBotStatus()">
+          <button id="btn-toggle-bot" class="btn btn-warning">
             ⏸️ Pause AI (Take Over)
           </button>
-          <button id="btn-resolve-ticket" class="btn btn-secondary" onclick="resolveCurrentTicket()" style="display: none;">
+          <button id="btn-resolve-ticket" class="btn btn-secondary" style="display: none;">
             ✅ Resolve Ticket
           </button>
           <a id="link-wa-direct" href="#" target="_blank" class="btn btn-secondary" title="Open direct chat in WhatsApp Web">
@@ -198,9 +197,8 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
             id="reply-input" 
             class="chat-textarea" 
             placeholder="Type a WhatsApp reply to customer... (Press Enter to send, Shift+Enter for newline)"
-            onkeydown="handleInputKey(event)"
           ></textarea>
-          <button id="btn-send-reply" class="btn btn-primary" onclick="sendReply()">
+          <button id="btn-send-reply" class="btn btn-primary">
             Send WhatsApp ✈️
           </button>
         </div>
@@ -235,15 +233,14 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
             id="auth-key-input" 
             class="modal-input" 
             placeholder="Enter password (default: MintaraBites@010101)..."
-            onkeydown="if(event.key==='Enter') saveAdminKey()"
           />
-          <button id="btn-toggle-pwd" type="button" class="btn btn-secondary" onclick="togglePasswordVisibility()" title="Show/Hide Key">👁️</button>
+          <button id="btn-toggle-pwd" type="button" class="btn btn-secondary" title="Show/Hide Key">👁️</button>
         </div>
       </div>
       
       <div class="modal-actions">
-        <button id="btn-close-key-modal" class="btn btn-secondary" onclick="closeKeyModal()">Cancel</button>
-        <button id="btn-save-key" class="btn btn-primary" onclick="saveAdminKey()">Unlock Command Center 🚀</button>
+        <button id="btn-close-key-modal" class="btn btn-secondary">Cancel</button>
+        <button id="btn-save-key" class="btn btn-primary">Unlock Command Center 🚀</button>
       </div>
 
       <div class="modal-hint">
@@ -315,8 +312,11 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
 
     function togglePasswordVisibility() {
       const input = document.getElementById('auth-key-input');
+      const btn = document.getElementById('btn-toggle-pwd');
       if (input) {
-        input.type = input.type === 'password' ? 'text' : 'password';
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+        if (btn) btn.innerText = isPassword ? '🙈' : '👁️';
       }
     }
 
@@ -404,7 +404,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
               '<div style="font-size: 2rem; margin-bottom: 8px;">🔒</div>' +
               '<div style="font-weight: 600; color: #fff; margin-bottom: 4px;">Authentication Required</div>' +
               '<div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 14px;">Enter your Admin Key to view live conversations.</div>' +
-              '<button id="btn-auth-unlock" class="btn btn-primary" onclick="openKeyModal()">🔑 Enter Admin Key</button>' +
+              '<button id="btn-auth-unlock" class="btn btn-primary">🔑 Enter Admin Key</button>' +
             '</div>';
         }
         if (!isAuthModalOpen) {
@@ -513,7 +513,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         }
         const snippet = c.lastMessage ? snippetPrefix + c.lastMessage.content : 'No messages yet';
 
-        return '<div class="conv-card ' + isSelected + '" data-id="' + escapeHtml(c.id) + '" onclick="selectConversation(\\'' + escapeHtml(c.id) + '\\')">' +
+        return '<div class="conv-card ' + isSelected + '" data-id="' + escapeHtml(c.id) + '">' +
           '<div class="conv-header">' +
             '<span class="conv-title">' + escapeHtml(c.customerName || c.phoneNumber) + '</span>' +
             '<span class="conv-time">' + escapeHtml(timeStr) + '</span>' +
