@@ -96,6 +96,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrcAttr: ["'unsafe-inline'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
       },
     },

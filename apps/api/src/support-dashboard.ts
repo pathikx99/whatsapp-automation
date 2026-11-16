@@ -135,7 +135,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     <div class="header-actions">
       <span id="sync-status" class="badge badge-warning">⚡ Connecting...</span>
       <button id="btn-admin-key" class="btn btn-secondary" onclick="openKeyModal()">🔑 Admin Key</button>
-      <button class="btn btn-secondary" onclick="refreshCurrentView()">🔄 Refresh</button>
+      <button id="btn-refresh-view" class="btn btn-secondary" onclick="refreshCurrentView()">🔄 Refresh</button>
     </div>
   </header>
 
@@ -237,12 +237,12 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
             placeholder="Enter password (default: MintaraBites@010101)..."
             onkeydown="if(event.key==='Enter') saveAdminKey()"
           />
-          <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility()" title="Show/Hide Key">👁️</button>
+          <button id="btn-toggle-pwd" type="button" class="btn btn-secondary" onclick="togglePasswordVisibility()" title="Show/Hide Key">👁️</button>
         </div>
       </div>
       
       <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeKeyModal()">Cancel</button>
+        <button id="btn-close-key-modal" class="btn btn-secondary" onclick="closeKeyModal()">Cancel</button>
         <button id="btn-save-key" class="btn btn-primary" onclick="saveAdminKey()">Unlock Command Center 🚀</button>
       </div>
 
@@ -404,7 +404,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
               '<div style="font-size: 2rem; margin-bottom: 8px;">🔒</div>' +
               '<div style="font-weight: 600; color: #fff; margin-bottom: 4px;">Authentication Required</div>' +
               '<div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 14px;">Enter your Admin Key to view live conversations.</div>' +
-              '<button class="btn btn-primary" onclick="openKeyModal()">🔑 Enter Admin Key</button>' +
+              '<button id="btn-auth-unlock" class="btn btn-primary" onclick="openKeyModal()">🔑 Enter Admin Key</button>' +
             '</div>';
         }
         if (!isAuthModalOpen) {
@@ -513,7 +513,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         }
         const snippet = c.lastMessage ? snippetPrefix + c.lastMessage.content : 'No messages yet';
 
-        return '<div class="conv-card ' + isSelected + '" onclick="selectConversation(\\'' + escapeHtml(c.id) + '\\')">' +
+        return '<div class="conv-card ' + isSelected + '" data-id="' + escapeHtml(c.id) + '" onclick="selectConversation(\\'' + escapeHtml(c.id) + '\\')">' +
           '<div class="conv-header">' +
             '<span class="conv-title">' + escapeHtml(c.customerName || c.phoneNumber) + '</span>' +
             '<span class="conv-time">' + escapeHtml(timeStr) + '</span>' +
@@ -781,6 +781,68 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       if (currentConversationId) {
         await selectConversation(currentConversationId);
       }
+    }
+
+    // Event listeners binding for CSP Level 3 environments
+    function initEventListeners() {
+      const bind = (id, event, handler) => {
+        const el = document.getElementById(id);
+        if (el && !el.dataset.bound) {
+          el.dataset.bound = 'true';
+          el.addEventListener(event, handler);
+        }
+      };
+
+      bind('btn-admin-key', 'click', () => openKeyModal());
+      bind('btn-refresh-view', 'click', () => refreshCurrentView());
+      bind('btn-toggle-bot', 'click', () => toggleBotStatus());
+      bind('btn-resolve-ticket', 'click', () => resolveCurrentTicket());
+      bind('btn-send-reply', 'click', () => sendReply());
+      bind('btn-toggle-pwd', 'click', () => togglePasswordVisibility());
+      bind('btn-close-key-modal', 'click', () => closeKeyModal());
+      bind('btn-save-key', 'click', () => saveAdminKey());
+
+      bind('search-input', 'input', (e) => handleSearch(e.target.value));
+      bind('reply-input', 'keydown', (e) => handleInputKey(e));
+      bind('auth-key-input', 'keydown', (e) => {
+        if (e.key === 'Enter') saveAdminKey();
+      });
+
+      bind('tab-all', 'click', () => setFilter('all'));
+      bind('tab-attention', 'click', () => setFilter('escalated'));
+      bind('tab-active', 'click', () => setFilter('active'));
+      bind('tab-resolved', 'click', () => setFilter('resolved'));
+
+      const convContainer = document.getElementById('conversations-container');
+      if (convContainer && !convContainer.dataset.bound) {
+        convContainer.dataset.bound = 'true';
+        convContainer.addEventListener('click', (e) => {
+          const card = e.target.closest('.conv-card');
+          if (card && card.dataset.id) {
+            selectConversation(card.dataset.id);
+            return;
+          }
+          const authBtn = e.target.closest('#btn-auth-unlock');
+          if (authBtn) {
+            openKeyModal();
+            return;
+          }
+        });
+      }
+
+      const authModal = document.getElementById('auth-modal');
+      if (authModal && !authModal.dataset.bound) {
+        authModal.dataset.bound = 'true';
+        authModal.addEventListener('click', (e) => {
+          if (e.target === authModal) closeKeyModal();
+        });
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initEventListeners);
+    } else {
+      initEventListeners();
     }
 
     // Initial boot
