@@ -311,6 +311,30 @@ export class PlatformRepository {
     }
   }
 
+  public async updateConversationMetadata(
+    phoneNumber: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    const now = new Date().toISOString();
+
+    const { error } = await this.client
+      .from('support_conversations')
+      .update({
+        metadata,
+        updated_at: now,
+      })
+      .eq('phone_number', cleanPhone);
+
+    if (error) {
+      logger.error(
+        { error, phoneNumber: cleanPhone },
+        'Failed updating support_conversations metadata',
+      );
+      throw new Error(`Database error updating conversation metadata: ${error.message}`);
+    }
+  }
+
   public async getConversationById(id: string): Promise<PlatformConversation | null> {
     const { data, error } = await this.client
       .from('support_conversations')

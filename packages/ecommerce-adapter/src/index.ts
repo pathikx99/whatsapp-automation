@@ -377,7 +377,7 @@ export function createEcommerceAdapter(): EcommerceAdapter {
           client
             .from('customers')
             .select(
-              'id, email, first_name, last_name, phone, customer_type, segment, total_spend, total_orders, last_order_date',
+              'id, email, first_name, last_name, phone, segment, total_spend, total_orders, last_order_date',
             )
             .or(`phone.eq.${phone10},phone.eq.${phone12},phone.eq.${digitsOnly}`)
             .limit(1)
@@ -399,7 +399,7 @@ export function createEcommerceAdapter(): EcommerceAdapter {
           email: data.email,
           firstName: data.first_name,
           lastName: data.last_name,
-          customerType: data.customer_type,
+          customerType: data.segment || 'standard',
           segment: data.segment,
           totalOrders: data.total_orders,
           totalSpend: data.total_spend,
@@ -794,7 +794,7 @@ export function createEcommerceAdapter(): EcommerceAdapter {
           client
             .from('customers')
             .select(
-              'id, email, first_name, last_name, phone, customer_type, segment, total_spend, total_orders, last_order_date',
+              'id, email, first_name, last_name, phone, segment, total_spend, total_orders, last_order_date',
             )
             .order('last_order_date', { ascending: false, nullsFirst: false })
             .limit(5000),

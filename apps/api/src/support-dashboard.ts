@@ -33,7 +33,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     .header-actions { display: flex; gap: 10px; align-items: center; }
     
     /* Badges */
-    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; }
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
     .badge-success { background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
     .badge-escalated { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
     .badge-active { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
@@ -49,8 +49,9 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     .inbox-search-area { padding: 12px 14px 8px; border-bottom: 1px solid var(--border); }
     .search-input { width: 100%; background: #090d16; border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; color: #fff; font-size: 0.85rem; outline: none; }
     .search-input:focus { border-color: var(--accent); }
-    .inbox-tabs { display: flex; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--border); overflow-x: auto; }
-    .tab-btn { background: transparent; border: 1px solid transparent; color: var(--text-muted); padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+    .inbox-tabs { display: flex; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
+    .inbox-tabs::-webkit-scrollbar { display: none; }
+    .tab-btn { background: transparent; border: 1px solid transparent; color: var(--text-muted); padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; flex-shrink: 0; }
     .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.05); }
     .tab-btn.active { color: #fff; background: var(--card-bg); border-color: var(--border); }
     
@@ -80,13 +81,17 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     .msg-meta { font-size: 0.68rem; opacity: 0.7; margin-top: 4px; text-align: right; }
     
     .chat-composer-area { padding: 14px 18px; border-top: 1px solid var(--border); background: var(--panel-bg); display: flex; flex-direction: column; gap: 8px; }
+    .quick-replies-bar { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; -ms-overflow-style: none; align-items: center; }
+    .quick-replies-bar::-webkit-scrollbar { display: none; }
+    .btn-quick-reply { background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: #cbd5e1; border-radius: 6px; padding: 3px 8px; font-size: 0.72rem; cursor: pointer; white-space: nowrap; transition: all 0.15s; flex-shrink: 0; }
+    .btn-quick-reply:hover { background: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.4); }
     .composer-input-wrapper { display: flex; gap: 10px; align-items: flex-end; }
     .chat-textarea { flex: 1; background: #090d16; border: 1px solid var(--border); border-radius: 8px; color: #fff; padding: 10px 14px; font-size: 0.9rem; resize: none; min-height: 52px; max-height: 120px; outline: none; }
     .chat-textarea:focus { border-color: var(--accent); }
     .composer-caption { font-size: 0.72rem; color: var(--text-muted); display: flex; justify-content: space-between; }
     
     /* Buttons */
-    .btn { padding: 8px 14px; border-radius: 6px; font-weight: 600; font-size: 0.82rem; cursor: pointer; border: none; transition: opacity 0.15s, background 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn { padding: 8px 14px; border-radius: 6px; font-weight: 600; font-size: 0.82rem; cursor: pointer; border: none; transition: opacity 0.15s, background 0.15s; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex-shrink: 0; }
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .btn-primary { background: var(--accent); color: #000; }
@@ -123,6 +128,70 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
     .modal-error { color: var(--danger); font-size: 0.78rem; margin-bottom: 12px; display: none; }
     .modal-hint { font-size: 0.72rem; color: var(--text-muted); line-height: 1.4; margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); }
+
+    /* Responsive Viewport Controls */
+    .mobile-only { display: none !important; }
+    .mobile-tablet-toggle { display: none !important; }
+    .mobile-tablet-header { display: none !important; }
+
+    @media (min-width: 1025px) {
+      .main-layout { display: grid; grid-template-columns: 360px 1fr 340px; flex: 1; overflow: hidden; }
+      .dossier-panel { display: flex !important; }
+    }
+
+    @media (max-width: 1024px) and (min-width: 768px) {
+      .main-layout { display: grid; grid-template-columns: 320px 1fr; flex: 1; overflow: hidden; position: relative; }
+      .mobile-tablet-toggle { display: inline-flex !important; }
+      .header-sub-badge { display: none !important; }
+      .dossier-panel {
+        display: none;
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 360px;
+        z-index: 50;
+        box-shadow: -8px 0 24px rgba(0,0,0,0.6);
+        background: var(--panel-bg);
+      }
+      .dossier-panel.drawer-open {
+        display: flex !important;
+      }
+      .mobile-tablet-header { display: flex !important; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    }
+
+    @media (max-width: 767px) {
+      header { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+      header h1 { font-size: 0.95rem; }
+      .header-sub-badge { display: none !important; }
+      .header-actions { gap: 6px; }
+      .header-actions .btn { padding: 6px 10px; font-size: 0.75rem; }
+      #sync-status { display: none !important; }
+
+      .main-layout { display: flex; flex-direction: column; flex: 1; overflow: hidden; position: relative; }
+      .inbox-panel { width: 100%; height: 100%; display: flex; }
+      .chat-panel { width: 100%; height: 100%; display: none; }
+      .dossier-panel { width: 100%; height: 100%; display: none; padding: 14px; }
+
+      .main-layout.view-chat .inbox-panel { display: none !important; }
+      .main-layout.view-chat .chat-panel { display: flex !important; }
+      .main-layout.view-chat .dossier-panel { display: none !important; }
+
+      .main-layout.view-dossier .inbox-panel { display: none !important; }
+      .main-layout.view-dossier .chat-panel { display: none !important; }
+      .main-layout.view-dossier .dossier-panel { display: flex !important; }
+
+      .mobile-only { display: inline-flex !important; }
+      .mobile-tablet-toggle { display: inline-flex !important; }
+      .mobile-tablet-header { display: flex !important; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+
+      .chat-header { padding: 10px 12px; flex-direction: column; align-items: flex-start; gap: 8px; }
+      .chat-header > div:first-child { width: 100%; }
+      .chat-controls { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 6px; }
+      .chat-controls .btn { padding: 6px 10px; font-size: 0.75rem; }
+      .chat-composer-area { padding: 10px 12px; }
+      .composer-caption span:first-child { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -130,7 +199,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     <h1>
       <span>🌿</span> ${brandName} WhatsApp Command Center
       <span class="badge badge-success">● Live Official Meta API</span>
-      <span class="badge badge-active" style="font-size: 0.68rem; opacity: 0.85;">Live Agent Support Desk (Zero Meta OTP Friction)</span>
+      <span class="badge badge-active header-sub-badge" style="font-size: 0.68rem; opacity: 0.85;">Live Agent Support Desk (Zero Meta OTP Friction)</span>
     </h1>
     <div class="header-actions">
       <span id="sync-status" class="badge badge-warning">⚡ Connecting...</span>
@@ -139,16 +208,20 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     </div>
   </header>
 
-  <div class="main-layout">
+  <div id="main-layout" class="main-layout">
     <!-- Left Panel: All Inbound Conversations -->
     <div class="inbox-panel">
-      <div class="inbox-search-area">
+      <div class="inbox-search-area" style="display: flex; gap: 8px; align-items: center;">
         <input 
           id="search-input" 
           type="text" 
           class="search-input" 
-          placeholder="🔍 Search customer, phone, text..."
+          placeholder="🔍 Search or enter phone..."
+          style="flex: 1;"
         />
+        <button id="btn-open-new-chat" class="btn btn-primary" style="padding: 8px 12px; font-size: 0.8rem; white-space: nowrap; flex-shrink: 0;" title="Start chat with any phone number">
+          ➕ New Chat
+        </button>
       </div>
       <div class="inbox-tabs">
         <button id="tab-all" class="tab-btn active">All <span id="count-all" class="badge-count">0</span></button>
@@ -164,19 +237,30 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     <!-- Center Panel: Real-time Live Chat -->
     <div class="chat-panel">
       <div id="chat-header" class="chat-header" style="display: none;">
-        <div>
-          <div class="customer-info-title">
-            <span id="active-customer-name">Customer Name</span>
-            <span id="active-status-badge" class="badge badge-active">🤖 AI Handling</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <button id="btn-back-to-inbox" class="btn btn-secondary mobile-only" title="Back to Inbox">
+            ← Inbox
+          </button>
+          <div>
+            <div class="customer-info-title">
+              <span id="active-customer-name">Customer Name</span>
+              <span id="active-status-badge" class="badge badge-active">🤖 AI Handling</span>
+            </div>
+            <div id="active-customer-phone" class="customer-info-sub">+91...</div>
           </div>
-          <div id="active-customer-phone" class="customer-info-sub">+91...</div>
         </div>
         <div class="chat-controls">
+          <button id="btn-toggle-dossier" class="btn btn-secondary mobile-tablet-toggle" title="View Customer Dossier">
+            📋 Info
+          </button>
           <button id="btn-toggle-bot" class="btn btn-warning">
             ⏸️ Pause AI (Take Over)
           </button>
           <button id="btn-resolve-ticket" class="btn btn-secondary" style="display: none;">
             ✅ Resolve Ticket
+          </button>
+          <button id="btn-export-chat" class="btn btn-secondary" title="Download chat transcript">
+            📥 Export
           </button>
           <a id="link-wa-direct" href="#" target="_blank" class="btn btn-secondary" title="Open direct chat in WhatsApp Web">
             ↗ WhatsApp
@@ -192,6 +276,14 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       </div>
 
       <div id="chat-composer-area" class="chat-composer-area" style="display: none;">
+        <div class="quick-replies-bar">
+          <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-right: 4px;">⚡ Quick Replies:</span>
+          <button type="button" class="btn-quick-reply" data-text="Hello! ❄️ To maintain the freshest crunch and aroma of your Paan Mukhwas, please keep it refrigerated in an airtight jar. Enjoy!">❄️ Refrigeration FAQ</button>
+          <button type="button" class="btn-quick-reply" data-text="Thank you for sharing your landmark directions! 📍 We have forwarded your exact instructions to our courier delivery partner for priority re-attempt.">📍 Courier Landmark</button>
+          <button type="button" class="btn-quick-reply" data-text="Your order is currently in transit! 🚚 You can track live courier milestones anytime, or let us know if you need priority dispatch assistance.">🚚 Order Tracking</button>
+          <button type="button" class="btn-quick-reply" data-text="As a special thank you from our family at Mintara Bites, here is an exclusive 10% privilege discount on your next box: use code MINTARA10 at checkout! 🌿">🎁 10% Off Privilege</button>
+          <button type="button" class="btn-quick-reply" data-text="Hi there! 👋 This is senior customer care following up directly. How can I best assist you with your order today?">✍️ Senior Support</button>
+        </div>
         <div class="composer-input-wrapper">
           <textarea 
             id="reply-input" 
@@ -210,7 +302,11 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     </div>
 
     <!-- Right Panel: Customer Intelligence & Logistics Dossier -->
-    <div class="dossier-panel">
+    <div id="dossier-panel" class="dossier-panel">
+      <div class="mobile-tablet-header">
+        <button id="btn-back-to-chat" class="btn btn-secondary">← Back to Chat</button>
+        <span style="font-weight: 600; font-size: 0.85rem; color: #fff;">Customer Info</span>
+      </div>
       <div id="dossier-container">
         <div class="empty-state">Customer store details, order history, and landmark instructions will appear here.</div>
       </div>
@@ -221,18 +317,18 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
   <div id="auth-modal" class="modal-overlay">
     <div class="modal-card">
       <h2><span>🔐</span> Admin Authentication Required</h2>
-      <p>Enter the store password to access real-time WhatsApp conversations and live agent chat.</p>
+      <p>Enter your store administrator password or API key to access live customer conversations.</p>
       
       <div id="auth-modal-error" class="modal-error"></div>
       
       <div class="modal-input-group">
-        <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">ADMIN PASSWORD</label>
+        <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">ADMIN PASSWORD / API KEY</label>
         <div class="modal-input-wrapper">
           <input 
             type="password" 
             id="auth-key-input" 
             class="modal-input" 
-            placeholder="Enter password (default: MintaraBites@010101)..."
+            placeholder="Enter admin key..."
           />
           <button id="btn-toggle-pwd" type="button" class="btn btn-secondary" title="Show/Hide Key">👁️</button>
         </div>
@@ -244,7 +340,58 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       </div>
 
       <div class="modal-hint">
-        💡 <strong>Zero Friction Access:</strong> Default password is <code>MintaraBites@010101</code> (or your server's <code>ADMIN_API_KEY</code>). You can also append <code>?key=MintaraBites@010101</code> in the browser URL to login automatically.
+        🔒 <strong>Authorized Store Access:</strong> Enter your configured <code>ADMIN_API_KEY</code>. You can also append <code>?key=&lt;ADMIN_KEY&gt;</code> to this dashboard URL to authenticate automatically.
+      </div>
+    </div>
+  </div>
+
+  <!-- New Direct Chat Modal -->
+  <div id="new-chat-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <h2><span>💬</span> Start WhatsApp Chat</h2>
+      <p>Enter any customer phone number to initiate or open a live conversation desk.</p>
+      
+      <div id="new-chat-modal-error" class="modal-error"></div>
+      
+      <div class="modal-input-group">
+        <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">PHONE NUMBER (WITH OR WITHOUT +91)</label>
+        <div class="modal-input-wrapper">
+          <input 
+            type="text" 
+            id="new-chat-phone" 
+            class="modal-input" 
+            placeholder="e.g. 8732993344 or +91 98765 43210"
+          />
+        </div>
+      </div>
+
+      <div class="modal-input-group">
+        <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">CUSTOMER NAME (OPTIONAL)</label>
+        <div class="modal-input-wrapper">
+          <input 
+            type="text" 
+            id="new-chat-name" 
+            class="modal-input" 
+            placeholder="e.g. Pathik Patel"
+          />
+        </div>
+      </div>
+
+      <div class="modal-input-group">
+        <label style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">INITIAL MESSAGE (OPTIONAL)</label>
+        <div class="modal-input-wrapper">
+          <textarea 
+            id="new-chat-msg" 
+            class="modal-input" 
+            style="min-height: 70px; resize: vertical; padding: 10px;"
+            placeholder="Type a message to dispatch immediately via WhatsApp, or leave blank to just open the chat desk..."
+          ></textarea>
+        </div>
+      </div>
+      
+      <div class="modal-actions">
+        <button id="btn-close-new-chat-modal" class="btn btn-secondary">Cancel</button>
+        <button id="btn-submit-new-chat" class="btn btn-primary">Start Chat 🚀</button>
       </div>
     </div>
   </div>
@@ -268,8 +415,6 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         const queryKey = urlParams.get('key') || urlParams.get('admin_key') || urlParams.get('adminKey') || urlParams.get('token');
         if (queryKey) {
           localStorage.setItem('d2c_admin_key', queryKey.trim());
-        } else if (!localStorage.getItem('d2c_admin_key')) {
-          localStorage.setItem('d2c_admin_key', 'MintaraBites@010101');
         }
         targetConvId = urlParams.get('conv') || urlParams.get('conversationId') || urlParams.get('id') || urlParams.get('phone');
         const cleanUrl = window.location.pathname;
@@ -293,7 +438,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         modal.style.display = 'flex';
         const input = document.getElementById('auth-key-input');
         if (input) {
-          input.value = localStorage.getItem('d2c_admin_key') || 'MintaraBites@010101';
+          input.value = localStorage.getItem('d2c_admin_key') || '';
           input.focus();
         }
         const errEl = document.getElementById('auth-modal-error');
@@ -308,6 +453,93 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       isAuthModalOpen = false;
       const modal = document.getElementById('auth-modal');
       if (modal) modal.style.display = 'none';
+    }
+
+    function openNewChatModal(presetPhone = '') {
+      const modal = document.getElementById('new-chat-modal');
+      if (modal) {
+        modal.style.display = 'flex';
+        const phoneInput = document.getElementById('new-chat-phone');
+        if (phoneInput) {
+          if (presetPhone) phoneInput.value = presetPhone;
+          phoneInput.focus();
+        }
+        const errEl = document.getElementById('new-chat-modal-error');
+        if (errEl) errEl.style.display = 'none';
+      }
+    }
+
+    function closeNewChatModal() {
+      const modal = document.getElementById('new-chat-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    async function startNewChat() {
+      const phoneInput = document.getElementById('new-chat-phone');
+      const nameInput = document.getElementById('new-chat-name');
+      const msgInput = document.getElementById('new-chat-msg');
+      const errEl = document.getElementById('new-chat-modal-error');
+      const submitBtn = document.getElementById('btn-submit-new-chat');
+
+      const phone = (phoneInput?.value || '').trim();
+      const customerName = (nameInput?.value || '').trim();
+      const initialMessage = (msgInput?.value || '').trim();
+
+      if (!phone) {
+        if (errEl) {
+          errEl.innerText = 'Please enter a valid phone number.';
+          errEl.style.display = 'block';
+        }
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Connecting...';
+      }
+
+      try {
+        const res = await fetch('/api/support/conversations', {
+          method: 'POST',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            phoneNumber: phone,
+            customerName: customerName || undefined,
+            initialMessage: initialMessage || undefined,
+          }),
+        });
+
+        if (await handleAuthChallenge(res)) return;
+
+        if (res.ok) {
+          const data = await res.json();
+          closeNewChatModal();
+          if (phoneInput) phoneInput.value = '';
+          if (nameInput) nameInput.value = '';
+          if (msgInput) msgInput.value = '';
+          
+          await loadConversations();
+          if (data.conversation?.id) {
+            await selectConversation(data.conversation.id);
+          }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          if (errEl) {
+            errEl.innerText = errData.error || 'Failed to start conversation.';
+            errEl.style.display = 'block';
+          }
+        }
+      } catch (err) {
+        if (errEl) {
+          errEl.innerText = 'Network error connecting to support engine.';
+          errEl.style.display = 'block';
+        }
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerText = 'Start Chat 🚀';
+        }
+      }
     }
 
     function togglePasswordVisibility() {
@@ -362,10 +594,11 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
           }
         }
       } catch (err) {
-        localStorage.setItem('d2c_admin_key', key);
-        authFailed = false;
-        closeKeyModal();
-        await loadConversations();
+        const errEl = document.getElementById('auth-modal-error');
+        if (errEl) {
+          errEl.innerText = 'Network error while verifying admin key. Please check connection.';
+          errEl.style.display = 'block';
+        }
       } finally {
         if (saveBtn) {
           saveBtn.disabled = false;
@@ -385,7 +618,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     }
 
     function getAuthHeaders(extraHeaders = {}) {
-      const key = localStorage.getItem('d2c_admin_key') || 'MintaraBites@010101';
+      const key = localStorage.getItem('d2c_admin_key') || '';
       const headers = { ...extraHeaders };
       if (key) {
         headers['x-admin-key'] = key;
@@ -442,11 +675,12 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         renderConversationsList();
 
         if (!currentConversationId && targetConvId) {
-          const match = conversations.find(c => c.id === targetConvId || c.phoneNumber === targetConvId);
+          const cleanTarget = targetConvId.replace(/\D/g, '');
+          const match = conversations.find(c => c.id === targetConvId || c.phoneNumber === targetConvId || (cleanTarget && (c.phoneNumber === cleanTarget || c.phoneNumber === '91' + cleanTarget)));
           if (match) {
             selectConversation(match.id);
-          } else {
-            selectConversation(targetConvId);
+          } else if (cleanTarget.length >= 10) {
+            openNewChatModal(cleanTarget);
           }
           targetConvId = null;
         }
@@ -466,6 +700,9 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       document.getElementById('count-attention').innerText = attentionCount;
       document.getElementById('count-active').innerText = activeCount;
       document.getElementById('count-resolved').innerText = resolvedCount;
+
+      const baseTitle = '${brandName} WhatsApp Command Center';
+      document.title = (attentionCount > 0 ? '🚨 (' + attentionCount + ' Urgent) ' : '') + baseTitle;
     }
 
     function renderConversationsList() {
@@ -487,7 +724,17 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       });
 
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="empty-state">No conversations found in this view.</div>';
+        const digits = searchQuery.replace(/\D/g, '');
+        if (digits.length >= 7) {
+          container.innerHTML = '<div class="empty-state">' +
+            '<p style="margin-bottom: 12px; font-size: 0.85rem;">No existing chat found for <strong>+' + escapeHtml(digits) + '</strong>.</p>' +
+            '<button id="btn-search-new-chat" class="btn btn-primary" style="margin: 0 auto; font-size: 0.82rem;">💬 Start Chat With +' + escapeHtml(digits) + '</button>' +
+          '</div>';
+          const btn = document.getElementById('btn-search-new-chat');
+          if (btn) btn.onclick = () => openNewChatModal(digits);
+        } else {
+          container.innerHTML = '<div class="empty-state">No conversations found in this view.</div>';
+        }
         return;
       }
 
@@ -530,6 +777,14 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
     async function selectConversation(conversationId) {
       currentConversationId = conversationId;
       renderConversationsList();
+
+      if (window.innerWidth < 768) {
+        const layout = document.getElementById('main-layout');
+        if (layout) {
+          layout.classList.remove('view-dossier');
+          layout.classList.add('view-chat');
+        }
+      }
 
       document.getElementById('chat-header').style.display = 'flex';
       document.getElementById('chat-composer-area').style.display = 'flex';
@@ -584,12 +839,18 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       }
     }
 
-    function renderMessages(messages) {
+    let currentMessagesList = [];
+
+    function renderMessages(messages, isInitial = false) {
       const container = document.getElementById('messages-container');
       if (!messages || messages.length === 0) {
         container.innerHTML = '<div class="empty-state">No messages in this conversation yet.</div>';
+        currentMessagesList = [];
         return;
       }
+
+      const isNearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
+      currentMessagesList = messages;
 
       container.innerHTML = messages.map(m => {
         let bubbleClass = 'msg-user';
@@ -605,16 +866,33 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         const date = new Date(m.createdAt);
         const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+        let contentHtml = '';
+        if (m.content && m.content.includes('[Media: audio]')) {
+          contentHtml = '<div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(59,130,246,0.15); color: #93c5fd; padding: 4px 8px; border-radius: 6px; margin-bottom: 4px; font-size: 0.78rem;">🎙️ Voice Note / Audio Message</div><div>' + escapeHtml(m.content) + '</div>';
+        } else if (m.content && (m.content.includes('[Media: image]') || m.content.includes('[Customer sent an image'))) {
+          contentHtml = '<div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(168,85,247,0.15); color: #c084fc; padding: 4px 8px; border-radius: 6px; margin-bottom: 4px; font-size: 0.78rem;">🖼️ Customer Photo Attached</div><div>' + escapeHtml(m.content) + '</div>';
+        } else if (m.content && m.content.includes('[Location:')) {
+          contentHtml = '<div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(34,197,94,0.15); color: #4ade80; padding: 4px 8px; border-radius: 6px; margin-bottom: 4px; font-size: 0.78rem;">📍 Location Pin Received</div><div>' + escapeHtml(m.content) + '</div>';
+        } else if (m.content && m.content.includes('[Button:')) {
+          contentHtml = '<div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(245,158,11,0.15); color: #fbbf24; padding: 4px 8px; border-radius: 6px; margin-bottom: 4px; font-size: 0.78rem;">🔘 Quick Button Tapped</div><div>' + escapeHtml(m.content) + '</div>';
+        } else if (m.content && m.content.includes('[WhatsApp Catalog Cart Order]')) {
+          contentHtml = '<div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(236,72,153,0.15); color: #f472b6; padding: 4px 8px; border-radius: 6px; margin-bottom: 4px; font-size: 0.78rem;">🛒 WhatsApp In-Chat Cart Order</div><div>' + escapeHtml(m.content) + '</div>';
+        } else {
+          contentHtml = '<div>' + escapeHtml(m.content) + '</div>';
+        }
+
         return '<div class="message-bubble ' + bubbleClass + '">' +
           '<div class="msg-sender-tag">' +
             '<span>' + escapeHtml(senderTag) + '</span>' +
           '</div>' +
-          '<div>' + escapeHtml(m.content) + '</div>' +
+          contentHtml +
           '<div class="msg-meta">' + escapeHtml(timeStr) + '</div>' +
         '</div>';
       }).join('');
 
-      container.scrollTop = container.scrollHeight;
+      if (isInitial || isNearBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
     }
 
     function renderDossier(dossier, ndrList, conv, ticket) {
@@ -631,14 +909,25 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         html += '<div class="dossier-row"><span class="label">Name:</span><span class="value">' + escapeHtml(customer.firstName + ' ' + (customer.lastName || '')) + '</span></div>';
         html += '<div class="dossier-row"><span class="label">Phone:</span><span class="value">+' + escapeHtml(conv.phoneNumber) + '</span></div>';
         if (customer.email) html += '<div class="dossier-row"><span class="label">Email:</span><span class="value">' + escapeHtml(customer.email) + '</span></div>';
-        html += '<div class="dossier-row"><span class="label">Total Spent:</span><span class="value" style="color: var(--accent);">₹' + escapeHtml(customer.totalSpent || 0) + '</span></div>';
+        if (customer.segment) html += '<div class="dossier-row"><span class="label">Segment:</span><span class="value badge badge-active" style="text-transform: uppercase; font-size: 0.7rem; font-weight: 600;">' + escapeHtml(customer.segment) + '</span></div>';
+        if (customer.totalOrders) html += '<div class="dossier-row"><span class="label">Orders:</span><span class="value">' + escapeHtml(customer.totalOrders) + '</span></div>';
+        html += '<div class="dossier-row"><span class="label">Total Spent:</span><span class="value" style="color: var(--accent); font-weight: 600;">₹' + escapeHtml(customer.totalSpend || customer.totalSpent || 0) + '</span></div>';
       } else {
         html += '<div class="dossier-row"><span class="label">Phone:</span><span class="value">+' + escapeHtml(conv.phoneNumber) + '</span></div>';
         html += '<div class="dossier-row"><span class="label">Account:</span><span class="value">Guest / Inbound Lead</span></div>';
       }
       html += '</div>';
 
-      // Section 2: Escalation Attention Info
+      // Section 2: Internal Agent Notes
+      const meta = conv?.metadata || {};
+      const internalNote = meta.internalNote || '';
+      html += '<div class="dossier-section">' +
+        '<h3>📝 Agent Internal Notes</h3>' +
+        '<textarea id="internal-note-input" class="reply-input" style="width: 100%; min-height: 65px; font-size: 0.82rem; margin-bottom: 8px; resize: vertical;" placeholder="Add private notes (e.g. VIP handling, promise made, packaging issue)...">' + escapeHtml(internalNote) + '</textarea>' +
+        '<button id="btn-save-note" class="btn btn-secondary" style="width: 100%; font-size: 0.78rem;">💾 Save Internal Note</button>' +
+      '</div>';
+
+      // Section 3: Escalation Attention Info
       if (ticket) {
         html += '<div class="dossier-section">';
         html += '<h3>🚨 Escalation Context</h3>';
@@ -649,7 +938,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         html += '</div>';
       }
 
-      // Section 3: Recent Orders & Tracking
+      // Section 4: Recent Orders & Tracking
       html += '<div class="dossier-section">';
       html += '<h3>📦 Order History (' + orders.length + ')</h3>';
       if (orders.length === 0) {
@@ -669,7 +958,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       }
       html += '</div>';
 
-      // Section 4: Delivery / Landmark Intelligence (NDR)
+      // Section 5: Delivery / Landmark Intelligence (NDR)
       if (ndrList && ndrList.length > 0) {
         html += '<div class="dossier-section">';
         html += '<h3>📍 Delivery Instructions</h3>';
@@ -683,6 +972,12 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       }
 
       container.innerHTML = html;
+
+      // Bind note saving button
+      const saveBtn = document.getElementById('btn-save-note');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', saveInternalNote);
+      }
     }
 
     async function sendReply() {
@@ -783,6 +1078,84 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       }
     }
 
+    function exportChatTranscript() {
+      if (!currentConversation || !currentMessagesList || currentMessagesList.length === 0) {
+        alert('No messages in this conversation to export.');
+        return;
+      }
+
+      let transcript = '========================================\n';
+      transcript += '${brandName} WhatsApp Support Transcript\n';
+      transcript += 'Customer: ' + (currentConversation.customerName || 'Customer') + ' (+' + currentConversation.phoneNumber + ')\n';
+      transcript += 'Status: ' + (currentConversation.status || 'unknown') + '\n';
+      transcript += 'Conversation ID: ' + currentConversation.id + '\n';
+      transcript += 'Exported: ' + new Date().toLocaleString() + '\n';
+      transcript += '========================================\n\n';
+
+      for (const m of currentMessagesList) {
+        const time = new Date(m.createdAt).toLocaleString();
+        let sender = 'Customer';
+        if (m.role === 'assistant') sender = 'Mintara AI Concierge';
+        else if (m.role === 'human_agent') sender = 'Human Agent';
+        transcript += '[' + time + '] ' + sender + ':\n' + m.content + '\n\n';
+      }
+
+      const blob = new Blob([transcript], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'chat_' + currentConversation.phoneNumber + '_' + Date.now() + '.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    async function saveInternalNote() {
+      if (!currentConversationId) return;
+      const noteInput = document.getElementById('internal-note-input');
+      const noteText = noteInput ? noteInput.value.trim() : '';
+      const saveBtn = document.getElementById('btn-save-note');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = 'Saving...';
+      }
+
+      try {
+        const res = await fetch('/api/support/conversations/' + currentConversationId + '/notes', {
+          method: 'PATCH',
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ note: noteText }),
+        });
+        if (await handleAuthChallenge(res)) return;
+        if (res.ok) {
+          if (saveBtn) saveBtn.innerText = '✅ Saved!';
+          if (currentConversation) {
+            currentConversation.metadata = currentConversation.metadata || {};
+            currentConversation.metadata.internalNote = noteText;
+          }
+          setTimeout(() => {
+            if (saveBtn) {
+              saveBtn.disabled = false;
+              saveBtn.innerText = '💾 Save Internal Note';
+            }
+          }, 1500);
+        } else {
+          alert('Failed saving note.');
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerText = '💾 Save Internal Note';
+          }
+        }
+      } catch (err) {
+        alert('Network error saving note.');
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerText = '💾 Save Internal Note';
+        }
+      }
+    }
+
     // Event listeners binding for CSP Level 3 environments
     function initEventListeners() {
       const bind = (id, event, handler) => {
@@ -797,6 +1170,7 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       bind('btn-refresh-view', 'click', () => refreshCurrentView());
       bind('btn-toggle-bot', 'click', () => toggleBotStatus());
       bind('btn-resolve-ticket', 'click', () => resolveCurrentTicket());
+      bind('btn-export-chat', 'click', () => exportChatTranscript());
       bind('btn-send-reply', 'click', () => sendReply());
       bind('btn-toggle-pwd', 'click', () => togglePasswordVisibility());
       bind('btn-close-key-modal', 'click', () => closeKeyModal());
@@ -812,6 +1186,63 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
       bind('tab-attention', 'click', () => setFilter('escalated'));
       bind('tab-active', 'click', () => setFilter('active'));
       bind('tab-resolved', 'click', () => setFilter('resolved'));
+
+      bind('btn-open-new-chat', 'click', () => openNewChatModal());
+      bind('btn-close-new-chat-modal', 'click', () => closeNewChatModal());
+      bind('btn-submit-new-chat', 'click', () => startNewChat());
+      bind('new-chat-phone', 'keydown', (e) => {
+        if (e.key === 'Enter') startNewChat();
+      });
+
+      bind('btn-back-to-inbox', 'click', () => {
+        const layout = document.getElementById('main-layout');
+        if (layout) {
+          layout.classList.remove('view-chat', 'view-dossier');
+        }
+      });
+
+      bind('btn-toggle-dossier', 'click', () => {
+        const layout = document.getElementById('main-layout');
+        const dossierPanel = document.getElementById('dossier-panel');
+        if (window.innerWidth < 768) {
+          if (layout) {
+            layout.classList.remove('view-chat');
+            layout.classList.add('view-dossier');
+          }
+        } else {
+          if (dossierPanel) {
+            dossierPanel.classList.toggle('drawer-open');
+          }
+        }
+      });
+
+      bind('btn-back-to-chat', 'click', () => {
+        const layout = document.getElementById('main-layout');
+        const dossierPanel = document.getElementById('dossier-panel');
+        if (window.innerWidth < 768) {
+          if (layout) {
+            layout.classList.remove('view-dossier');
+            layout.classList.add('view-chat');
+          }
+        } else {
+          if (dossierPanel) {
+            dossierPanel.classList.remove('drawer-open');
+          }
+        }
+      });
+
+      document.querySelectorAll('.btn-quick-reply').forEach(btn => {
+        if (!btn.dataset.bound) {
+          btn.dataset.bound = 'true';
+          btn.addEventListener('click', () => {
+            const textarea = document.getElementById('reply-input');
+            if (textarea && btn.dataset.text) {
+              textarea.value = btn.dataset.text;
+              textarea.focus();
+            }
+          });
+        }
+      });
 
       const convContainer = document.getElementById('conversations-container');
       if (convContainer && !convContainer.dataset.bound) {
@@ -835,6 +1266,14 @@ export function renderSupportDashboardHtml(brandName = 'D2C Store'): string {
         authModal.dataset.bound = 'true';
         authModal.addEventListener('click', (e) => {
           if (e.target === authModal) closeKeyModal();
+        });
+      }
+
+      const newChatModal = document.getElementById('new-chat-modal');
+      if (newChatModal && !newChatModal.dataset.bound) {
+        newChatModal.dataset.bound = 'true';
+        newChatModal.addEventListener('click', (e) => {
+          if (e.target === newChatModal) closeNewChatModal();
         });
       }
     }

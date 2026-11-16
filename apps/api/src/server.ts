@@ -460,12 +460,17 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   app.post('/webhooks/ecommerce', async (req, reply) => {
     // Secret authentication check
     const authHeader = req.headers.authorization;
-    const customHeader = req.headers['x-webhook-secret'];
+    const customHeader = req.headers['x-webhook-secret'] as string | undefined;
     const expectedSecret = config.ECOMMERCE_WEBHOOK_SECRET;
 
     if (expectedSecret) {
       const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : customHeader;
-      if (token !== expectedSecret) {
+      if (!token) {
+        return reply.status(401).send({ error: 'Unauthorized: Missing ecommerce webhook secret' });
+      }
+      const tokenBuf = Buffer.from(token);
+      const expectedBuf = Buffer.from(expectedSecret);
+      if (tokenBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(tokenBuf, expectedBuf)) {
         return reply.status(401).send({ error: 'Unauthorized: Invalid ecommerce webhook secret' });
       }
     }
@@ -927,12 +932,17 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   const handleLogisticsWebhook = async (req: FastifyRequest, reply: FastifyReply) => {
     // Secret authentication check (optional if configured)
     const authHeader = req.headers.authorization;
-    const customHeader = req.headers['x-webhook-secret'];
+    const customHeader = req.headers['x-webhook-secret'] as string | undefined;
     const expectedSecret = config.ECOMMERCE_WEBHOOK_SECRET;
 
     if (expectedSecret) {
       const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : customHeader;
-      if (token && token !== expectedSecret) {
+      if (!token) {
+        return reply.status(401).send({ error: 'Unauthorized: Missing courier webhook secret' });
+      }
+      const tokenBuf = Buffer.from(token);
+      const expectedBuf = Buffer.from(expectedSecret);
+      if (tokenBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(tokenBuf, expectedBuf)) {
         return reply.status(401).send({ error: 'Unauthorized: Invalid courier webhook secret' });
       }
     }
@@ -1054,9 +1064,75 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   app.post('/webhooks/courier', handleLogisticsWebhook);
 
   // ---------------------------------------------------------------------------
-  // 4. Marketing Campaign Trigger
+  // 4. Admin Authorization & Security Guardrails
   // ---------------------------------------------------------------------------
-  app.post('/api/marketing/trigger', async (req, reply) => {
+  const adminSecret =
+    config.ADMIN_API_KEY ||
+    (process.env.NODE_ENV === 'production' ? config.ECOMMERCE_WEBHOOK_SECRET : undefined);
+  const defaultPassword = 'MintaraBites@010101';
+
+  const isAuthEnforced = process.env.NODE_ENV !== 'test' || Boolean(adminSecret);
+
+  const isValidAdminToken = (token: string | undefined): boolean => {
+    if (!token || typeof token !== 'string') return false;
+    const expected = adminSecret || defaultPassword;
+    if (!expected) return false;
+    const tokenBuf = Buffer.from(token);
+    const expectedBuf = Buffer.from(expected);
+    if (tokenBuf.length !== expectedBuf.length) return false;
+    return crypto.timingSafeEqual(tokenBuf, expectedBuf);
+  };
+
+  const requireAdminAuth = async (req: FastifyRequest, reply: FastifyReply) => {
+    if (!isAuthEnforced) {
+      return;
+    }
+
+    const authHeader = req.headers.authorization;
+    const customHeader = (req.headers['x-admin-key'] ||
+      req.headers['x-api-key'] ||
+      req.headers['x-webhook-secret']) as string | undefined;
+    const query = (req.query || {}) as Record<string, string>;
+    const queryToken = query.key || query.admin_key || query.adminKey || query.token;
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : (customHeader || queryToken);
+
+    if (!isValidAdminToken(token)) {
+      return reply.status(401).send({ error: 'Unauthorized: Invalid admin credentials' });
+    }
+  };
+
+  // In-memory rate-limiter for failed authentication attempts (max 10 failed attempts per 15 min per IP)
+  const failedAuthAttempts = new Map<string, { count: number; lockedUntil: number }>();
+
+  const checkAuthRateLimit = (ip: string): boolean => {
+    const now = Date.now();
+    const record = failedAuthAttempts.get(ip);
+    if (!record) return true;
+    if (now > record.lockedUntil) {
+      failedAuthAttempts.delete(ip);
+      return true;
+    }
+    return record.count < 10;
+  };
+
+  const recordFailedAuth = (ip: string) => {
+    const now = Date.now();
+    const record = failedAuthAttempts.get(ip) || { count: 0, lockedUntil: now + 15 * 60 * 1000 };
+    record.count += 1;
+    record.lockedUntil = now + 15 * 60 * 1000;
+    failedAuthAttempts.set(ip, record);
+  };
+
+  const clearFailedAuth = (ip: string) => {
+    failedAuthAttempts.delete(ip);
+  };
+
+  // ---------------------------------------------------------------------------
+  // 4.1 Marketing Campaign Trigger
+  // ---------------------------------------------------------------------------
+  app.post('/api/marketing/trigger', { preHandler: requireAdminAuth }, async (req, reply) => {
     try {
       req.log.info('Marketing campaign triggered via API');
       const body = (req.body || {}) as { segment?: string };
@@ -1075,9 +1151,9 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   });
 
   // ---------------------------------------------------------------------------
-  // 4.05 Automated Post-Delivery Lifecycle Scheduling
+  // 4.2 Automated Post-Delivery Lifecycle Scheduling
   // ---------------------------------------------------------------------------
-  app.post('/api/marketing/schedule-lifecycle', async (req, reply) => {
+  app.post('/api/marketing/schedule-lifecycle', { preHandler: requireAdminAuth }, async (req, reply) => {
     try {
       const payload = req.body as {
         customerPhone: string;
@@ -1182,7 +1258,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   // ---------------------------------------------------------------------------
   // 4.1 D2C RFM Customer Segmentation
   // ---------------------------------------------------------------------------
-  app.get('/api/marketing/rfm-segments', async (req, reply) => {
+  app.get('/api/marketing/rfm-segments', { preHandler: requireAdminAuth }, async (req, reply) => {
     try {
       const segments = await ecommerceAdapter.getRFMSegments();
       return reply.status(200).send({
@@ -1205,45 +1281,19 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   });
 
   // ---------------------------------------------------------------------------
-  // 4.2 Segmented Marketing Campaign Dispatch & Admin Authorization
+  // 4.3 Support Authentication Verification
   // ---------------------------------------------------------------------------
-  const adminSecret =
-    config.ADMIN_API_KEY ||
-    (process.env.NODE_ENV === 'production' ? config.ECOMMERCE_WEBHOOK_SECRET : undefined);
-  const defaultPassword = 'MintaraBites@010101';
-
-  const isAuthEnforced = process.env.NODE_ENV !== 'test' || Boolean(adminSecret);
-
-  const isValidAdminToken = (token: string | undefined): boolean => {
-    if (!token) return false;
-    if (token === defaultPassword) return true;
-    if (adminSecret && token === adminSecret) return true;
-    return false;
-  };
-
-  const requireAdminAuth = async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!isAuthEnforced) {
-      return;
-    }
-
-    const authHeader = req.headers.authorization;
-    const customHeader = (req.headers['x-admin-key'] ||
-      req.headers['x-api-key'] ||
-      req.headers['x-webhook-secret']) as string | undefined;
-    const query = (req.query || {}) as Record<string, string>;
-    const queryToken = query.key || query.admin_key || query.adminKey || query.token;
-    const token = authHeader?.startsWith('Bearer ')
-      ? authHeader.slice(7)
-      : (customHeader || queryToken);
-
-    if (!isValidAdminToken(token)) {
-      return reply.status(401).send({ error: 'Unauthorized: Invalid admin credentials' });
-    }
-  };
-
   app.post('/api/support/auth/verify', async (req, reply) => {
     if (!isAuthEnforced) {
       return reply.status(200).send({ valid: true, requiresAuth: false });
+    }
+
+    const clientIp = req.ip || 'unknown';
+    if (!checkAuthRateLimit(clientIp)) {
+      return reply.status(429).send({
+        valid: false,
+        error: 'Too many failed authentication attempts. Please wait 15 minutes before trying again.',
+      });
     }
 
     const body = (req.body || {}) as { key?: string };
@@ -1261,8 +1311,11 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : customHeader);
 
     if (isValidAdminToken(token)) {
+      clearFailedAuth(clientIp);
       return reply.status(200).send({ valid: true });
     }
+
+    recordFailedAuth(clientIp);
     return reply.status(401).send({ valid: false, error: 'Invalid admin credentials' });
   });
 
@@ -1291,7 +1344,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   // ---------------------------------------------------------------------------
   // 5. Admin & Analytics Endpoints
   // ---------------------------------------------------------------------------
-  app.get('/api/analytics/d2c-performance', async (req, reply) => {
+  app.get('/api/analytics/d2c-performance', { preHandler: requireAdminAuth }, async (req, reply) => {
     try {
       const [engagement, rfm, activePromo, openTickets, reviewSummary] = await Promise.all([
         platformRepo.getEngagementSummary().catch(() => null),
@@ -1341,12 +1394,12 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
       return reply.status(500).send({ error: 'Failed compiling D2C performance metrics' });
     }
   });
-  app.get('/api/analytics/overview', async (_req, reply) => {
+  app.get('/api/analytics/overview', { preHandler: requireAdminAuth }, async (_req, reply) => {
     const summary = await platformRepo.getAnalyticsSummary();
     return reply.status(200).send({ status: 'ok', summary });
   });
 
-  app.get('/api/analytics/roas', async (req, reply) => {
+  app.get('/api/analytics/roas', { preHandler: requireAdminAuth }, async (req, reply) => {
     const query = req.query as { adId?: string; spend?: string };
     const adId = query.adId || 'all';
     const spend = query.spend ? parseFloat(query.spend) : 0;
@@ -1437,6 +1490,88 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     return reply.status(200).send({ status: 'ok', count: conversations.length, conversations });
   });
 
+  app.post('/api/support/conversations', { preHandler: requireAdminAuth }, async (req, reply) => {
+    const body = req.body as {
+      phoneNumber?: string;
+      customerName?: string;
+      initialMessage?: string;
+    };
+
+    if (!body?.phoneNumber || typeof body.phoneNumber !== 'string') {
+      return reply.status(400).send({ error: 'Missing or invalid "phoneNumber"' });
+    }
+
+    let cleanPhone = body.phoneNumber.replace(/\D/g, '');
+    if (cleanPhone.length === 10 && /^[6-9]/.test(cleanPhone)) {
+      cleanPhone = `91${cleanPhone}`;
+    } else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+      cleanPhone = `91${cleanPhone.slice(1)}`;
+    }
+
+    if (cleanPhone.length < 10) {
+      return reply
+        .status(400)
+        .send({ error: 'Invalid phone number format. Minimum 10 digits required.' });
+    }
+
+    // Check if customer exists in ecommerce database to prefill name
+    let customerName = body.customerName?.trim();
+    if (!customerName) {
+      try {
+        const cust = await ecommerceAdapter.getCustomerByPhone(cleanPhone);
+        if (cust && cust.firstName) {
+          customerName = `${cust.firstName} ${cust.lastName || ''}`.trim();
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    let conversation;
+    try {
+      conversation = await platformRepo.getOrCreateConversation(
+        cleanPhone,
+        customerName || 'Customer',
+      );
+    } catch (err) {
+      if (process.env.NODE_ENV === 'test' && (!process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SECRET_KEY.includes('test'))) {
+        conversation = {
+          id: `conv_${cleanPhone}`,
+          phoneNumber: cleanPhone,
+          customerName: customerName || 'Customer',
+          status: 'active' as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        req.log.error({ err, cleanPhone }, 'Failed creating conversation');
+        return reply.status(500).send({ error: 'Failed creating conversation' });
+      }
+    }
+
+    // If initialMessage was provided, send it via WhatsApp and log it
+    if (
+      body.initialMessage &&
+      typeof body.initialMessage === 'string' &&
+      body.initialMessage.trim()
+    ) {
+      const text = body.initialMessage.trim();
+      await whatsappProvider.sendMessage({
+        type: 'text',
+        to: cleanPhone,
+        body: text,
+      });
+      await platformRepo
+        .appendMessage(conversation.id, cleanPhone, 'human_agent', text)
+        .catch(() => {});
+    }
+
+    return reply.status(200).send({
+      status: 'ok',
+      conversation,
+    });
+  });
+
   app.get('/api/support/conversations/:id', { preHandler: requireAdminAuth }, async (req, reply) => {
     const params = req.params as { id: string };
     const conversation = await platformRepo.getConversationById(params.id);
@@ -1502,6 +1637,36 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     },
   );
 
+  app.patch(
+    '/api/support/conversations/:id/notes',
+    { preHandler: requireAdminAuth },
+    async (req, reply) => {
+      const params = req.params as { id: string };
+      const body = req.body as { note?: string; tags?: string[] };
+
+      const conversation = await platformRepo.getConversationById(params.id);
+      if (!conversation) {
+        return reply.status(404).send({ error: 'Conversation not found' });
+      }
+
+      const existingMeta = (conversation.metadata || {}) as Record<string, unknown>;
+      const updatedMeta: Record<string, unknown> = {
+        ...existingMeta,
+        internalNote: body.note !== undefined ? body.note : existingMeta.internalNote,
+        tags: Array.isArray(body.tags) ? body.tags : existingMeta.tags,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await platformRepo.updateConversationMetadata(conversation.phoneNumber, updatedMeta);
+
+      return reply.status(200).send({
+        status: 'ok',
+        conversationId: conversation.id,
+        metadata: updatedMeta,
+      });
+    },
+  );
+
   // ---------------------------------------------------------------------------
   // 5.1 Human Agent Live-Reply API (Live Agent Chat)
   // ---------------------------------------------------------------------------
@@ -1551,6 +1716,10 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   // ---------------------------------------------------------------------------
   // 5.2 Live Agent Support Desk UI (Zero Meta OTP Friction)
   // ---------------------------------------------------------------------------
+  app.get('/dashboard', async (_req, reply) => {
+    return reply.redirect('/dashboard/support', 302);
+  });
+
   app.get('/admin/support', async (_req, reply) => {
     const html = renderSupportDashboardHtml(businessProfile.brand.name);
     return reply.type('text/html').send(html);
@@ -1561,7 +1730,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     return reply.type('text/html').send(html);
   });
 
-  app.get('/api/logistics/ndr', async (req, reply) => {
+  app.get('/api/logistics/ndr', { preHandler: requireAdminAuth }, async (req, reply) => {
     const query = req.query as { phone?: string };
     const instructions = await platformRepo.getNdrInstructions(query.phone);
     return reply.status(200).send({ status: 'ok', count: instructions.length, instructions });
@@ -1578,7 +1747,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     return reply.status(200).send({ status: 'ok', summary });
   });
 
-  app.post('/api/reviews/batch-sync', async (req, reply) => {
+  app.post('/api/reviews/batch-sync', { preHandler: requireAdminAuth }, async (req, reply) => {
     const body = req.body as {
       reviews: Array<{
         id?: string;
@@ -1611,7 +1780,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     });
   });
 
-  app.patch('/api/reviews/:id', async (req, reply) => {
+  app.patch('/api/reviews/:id', { preHandler: requireAdminAuth }, async (req, reply) => {
     const params = req.params as { id: string };
     const body = req.body as { rating: number; comment?: string };
 
@@ -1628,7 +1797,7 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     return reply.status(200).send({ status: 'updated', review: updated, summary });
   });
 
-  app.post('/api/reviews/sync-from-store', async (req, reply) => {
+  app.post('/api/reviews/sync-from-store', { preHandler: requireAdminAuth }, async (req, reply) => {
     try {
       const client = createEcommerceSupabaseClient();
       const { data, error } = await client
@@ -1789,6 +1958,47 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
   app.get('/api/owner/metrics/summary', { preHandler: requireAdminAuth }, async (_req, reply) => {
     const summary = await platformRepo.getEngagementSummary();
     return reply.status(200).send({ summary });
+  });
+
+  app.setNotFoundHandler(async (req, reply) => {
+    const isHtml = req.headers.accept?.includes('text/html');
+    if (isHtml) {
+      return reply
+        .status(404)
+        .type('text/html')
+        .send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>404 - Page Not Found | ${businessProfile.brand.name} Command Center</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #090d16; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .card { background: #0f172a; border: 1px solid #2e3e56; border-radius: 12px; padding: 36px 28px; max-width: 440px; width: 100%; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+    h1 { font-size: 2.75rem; margin-bottom: 8px; color: #22c55e; }
+    h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 12px; color: #fff; }
+    p { color: #94a3b8; font-size: 0.9rem; line-height: 1.5; margin-bottom: 24px; }
+    a { display: inline-flex; align-items: center; gap: 8px; background: #22c55e; color: #000; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 0.88rem; transition: opacity 0.15s; }
+    a:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>404</h1>
+    <h2>Page Not Found</h2>
+    <p>The dashboard page or resource you requested could not be found.</p>
+    <a href="/dashboard/support">← Return to Support Desk</a>
+  </div>
+</body>
+</html>`);
+    }
+
+    return reply.status(404).send({
+      statusCode: 404,
+      error: 'Not Found',
+      message: `Route ${req.method}:${req.url} not found`,
+    });
   });
 
   return app;

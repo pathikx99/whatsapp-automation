@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WhatsApp Automation Platform - Comprehensive Architecture & Functional Specification</title>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 15mm 20mm 15mm;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    line-height: 1.6;
+    font-size: 11pt;
+    margin: 0;
+    padding: 0;
+  }
+  h1, h2, h3, h4, h5 {
+    color: #0f172a;
+    font-weight: 700;
+    page-break-after: avoid;
+    margin-top: 1.4em;
+    margin-bottom: 0.5em;
+  }
+  h1 {
+    font-size: 24pt;
+    color: #047857;
+    border-bottom: 2px solid #047857;
+    padding-bottom: 8px;
+    margin-top: 0;
+  }
+  h2 {
+    font-size: 16pt;
+    color: #0f766e;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 5px;
+  }
+  h3 {
+    font-size: 13pt;
+    color: #1e293b;
+  }
+  h4 {
+    font-size: 11pt;
+    color: #334155;
+  }
+  p {
+    margin: 0.6em 0;
+  }
+  ul, ol {
+    margin: 0.6em 0;
+    padding-left: 1.4em;
+  }
+  li {
+    margin-bottom: 0.3em;
+  }
+  code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 9.5pt;
+    background-color: #f1f5f9;
+    color: #0f172a;
+    padding: 2px 4px;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+  }
+  pre {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 9pt;
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 12px;
+    overflow-x: auto;
+    page-break-inside: avoid;
+    line-height: 1.45;
+  }
+  pre code {
+    background-color: transparent;
+    padding: 0;
+    border: none;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+    font-size: 9.5pt;
+    page-break-inside: avoid;
+  }
+  th, td {
+    border: 1px solid #cbd5e1;
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    font-weight: 600;
+  }
+  tr:nth-child(even) td {
+    background-color: #f8fafc;
+  }
+  blockquote {
+    border-left: 4px solid #047857;
+    background-color: #f0fdf4;
+    padding: 10px 14px;
+    margin: 1em 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 10pt;
+    color: #166534;
+  }
+  .doc-header {
+    margin-bottom: 2em;
+    padding-bottom: 1.5em;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .doc-subtitle {
+    font-size: 13pt;
+    color: #475569;
+    margin-top: 4px;
+    margin-bottom: 12px;
+  }
+  .doc-meta {
+    font-size: 9pt;
+    color: #64748b;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 8.5pt;
+    font-weight: 600;
+    border-radius: 9999px;
+    background: #e0f2fe;
+    color: #0369a1;
+  }
+</style>
+</head>
+<body>
+
+<div class="doc-header">
+  <h1>WhatsApp Automation Platform</h1>
+  <div class="doc-subtitle">Comprehensive System Architecture, Technical Specifications & Functional Documentation</div>
+  <div class="doc-meta">
+    <strong>Version:</strong> 5.0 (Streamlined Decoupled Architecture) &nbsp;|&nbsp;
+    <strong>Runtime:</strong> Node.js v20+ / TypeScript 5.7+ / Fastify 5.2+ &nbsp;|&nbsp;
+    <strong>Ecosystem:</strong> Decoupled Monorepo
+  </div>
+</div>
+
+<h2>1. Executive Summary & Core Mission</h2>
+<p>
+The <strong>WhatsApp Automation Platform</strong> is an enterprise-grade, highly modular monorepo solution engineered to provide autonomous WhatsApp marketing, WhatsApp commerce, logistics coordination, and AI-driven conversational customer support for ecommerce and service businesses.
+</p>
+<p>
+While its primary flagship implementation is configured for <strong>Mintara Bites</strong> (an artisanal FMCG brand crafting 100% supari-free mouth fresheners and seed blends in Surat, Gujarat), the platform is fundamentally <strong>service-agnostic and universal</strong>. By abstracting brand identity, offerings, terminology, and workflows into dynamic configuration schemas, the exact same system effortlessly operates for dental clinics, wellness salons, B2B wholesale distributors, or hybrid enterprises.
+</p>
+<blockquote>
+<strong>Key Architectural Principle:</strong> The platform operates as a completely decoupled sidecar to the primary business storefront. It maintains strict read-only isolation over external production databases, ensuring zero risk of schema degradation, lock contention, or accidental data modification.
+</blockquote>
+
+<h2>2. Architectural Topology & Monorepo Structure</h2>
+<p>
+The repository is structured as a pnpm monorepo consisting of four independently deployable runtimes (<code>apps/</code>) and six reusable core libraries (<code>packages/</code>):
+</p>
+
+<h3>2.1 Applications (<code>apps/</code>)</h3>
+<ul>
+  <li><strong>API Server (<code>apps/api</code>)</strong>: Fastify HTTP and Webhook engine handling Meta WhatsApp webhooks, ecommerce store events, courier logistics updates, admin REST APIs, and the real-time Live Support Desk UI.</li>
+  <li><strong>AI Support Engine (<code>apps/support-engine</code>)</strong>: Multi-turn conversational orchestrator leveraging Google Gemini AI, managing customer context memory, multimodal audio/photo ingestion, and autonomous escalation.</li>
+  <li><strong>Marketing Engine (<code>apps/marketing-engine</code>)</strong>: Audience segmentation engine evaluating RFM customer tiers, generating Hinglish marketing copy, and enforcing 14-day anti-fatigue message protections.</li>
+  <li><strong>Background Queue Worker (<code>apps/worker</code>)</strong>: Asynchronous task processor handling scheduled message queues, day-25 replenishment reminders, CSAT surveys, and lifecycle habit retention prompts.</li>
+</ul>
+
+<h3>2.2 Shared Packages (<code>packages/</code>)</h3>
+<ul>
+  <li><strong><code>@whatsapp-platform/config</code></strong>: Centralized Zod schema validation, environment variable resolution (<code>.env.dev</code>, <code>.env.prod</code>), and dynamic Business Profile schemas.</li>
+  <li><strong><code>@whatsapp-platform/shared</code></strong>: Pino structured logging with automated PII and credential redaction, custom error hierarchies, and process shutdown routines.</li>
+  <li><strong><code>@whatsapp-platform/database</code></strong>: Dual-database PostgreSQL abstraction featuring automated SQL AST / keyword guards (<code>assertReadOnlySql</code>) and host safety verification (<code>assertLocalDatabaseUrl</code>).</li>
+  <li><strong><code>@whatsapp-platform/ecommerce-adapter</code></strong>: Decoupled domain contracts, RFM customer segmentation, daily consumption velocity calculators (~12g/day), and 1-click prefilled checkout URL generators.</li>
+  <li><strong><code>@whatsapp-platform/whatsapp</code></strong>: Meta WhatsApp Cloud API gateway provider managing interactive buttons, list pickers, catalog messages (<code>product</code>, <code>product_list</code>), typing indicators, and media downloads.</li>
+  <li><strong><code>@whatsapp-platform/ai</code></strong>: Google Gemini integration supporting multi-turn dialogue, image/audio processing, retries with exponential backoff, and the automated Business Synthesizer.</li>
+</ul>
+
+<h2>3. Detailed Functional Modules</h2>
+
+<h3>3.1 WhatsApp Commerce & High-ROI Conversions</h3>
+<ul>
+  <li><strong>Native Meta Catalog & Interactive Browsing</strong>: Employs Meta's interactive <code>product</code> and <code>product_list</code> messages directly within chat. Customers browse variants, select pack sizes (150g, 300g, 500g), and receive prefilled checkout URLs.</li>
+  <li><strong>Smart Replenishment Engine</strong>: Tracks order history and calculates runout timelines based on product weights and consumption rates (~12g/day; a 300g packet lasts ~25 days). Automatically queues day-25 replenishment reminders with a 1-click reorder button (<code>btn_reorder_favorites</code>).</li>
+  <li><strong>Dynamic Abandoned Cart Recovery</strong>: Receives <code>cart.abandoned</code> webhooks. For carts idle over 4 hours, it dynamically mints single-use, 24-hour expiring discount codes (e.g., <code>TREAT10-&lt;suffix&gt;</code>) to incentivize recovery.</li>
+  <li><strong>Click-to-WhatsApp (CTWA) Ad Attribution & ROAS</strong>: Captures inbound Meta Ad referral parameters (<code>ad_id</code>, <code>headline</code>, <code>source_id</code>). Launches tailored welcome conversations and computes ROAS metrics (<code>GET /api/analytics/roas</code>).</li>
+  <li><strong>Packaging Refill QR Code Ingestion</strong>: Customers scanning QR codes printed on physical packaging pouches (sending messages like <code>KHATAM_REFILL_CHAHIYE</code>) trigger immediate reorder flows with active discounts pre-applied.</li>
+  <li><strong>B2B & Corporate Gifting Intake</strong>: Automatically classifies high-ticket inquiries for wedding favors, corporate gifting, or wholesale, capturing event dates and quantities, and escalating directly to the brand founder.</li>
+</ul>
+
+<h3>3.2 Multimodal AI Customer Support</h3>
+<ul>
+  <li><strong>Context-Aware Multi-Turn Memory</strong>: Dynamically compiles customer order history, past dialogue turns, and verified website customer testimonials directly into the Gemini prompt context.</li>
+  <li><strong>Multimodal Ingestion</strong>: Ingests audio voice notes (interpreting English, Hindi, and Gujarati/Hinglish) and customer photos (for damage claims or order verification).</li>
+  <li><strong>Strict Delivery Redirection Policy</strong>: For customer security and carrier accuracy, shipping status inquiries (<code>"where is my order"</code>) are intercepted and redirected to the store's official web portal, preventing AI hallucinations.</li>
+  <li><strong>Autonomous Escalation & AI Mute Policy</strong>: When a customer requests human help, reports damaged goods, or the AI flags an issue via <code>[ESCALATE: &lt;reason&gt;]</code>:
+    <ol>
+      <li>Conversation state shifts to <code>escalated</code>, instantly muting the AI assistant.</li>
+      <li>A ticket is logged in <code>support_tickets</code>.</li>
+      <li>An administrative WhatsApp alert is dispatched containing the full conversation transcript, order history, and a direct <code>wa.me</code> link.</li>
+      <li>The customer receives a reassuring acknowledgement with a <code>🤖 Resume AI Bot</code> button.</li>
+    </ol>
+  </li>
+  <li><strong>Daily Message Rate Limits</strong>: Enforces a configurable per-customer daily quota (default: 25 messages) to prevent automated loops and API cost spikes.</li>
+</ul>
+
+<h3>3.3 Post-Purchase Journey & Logistics Coordination</h3>
+<ul>
+  <li><strong>Proactive Refrigeration Nudge</strong>: On <code>order.delivered</code> webhooks, detects temperature-sensitive items (e.g. Artisanal Paan Mukhwas containing fresh rose gulkand) and immediately alerts the customer to refrigerate it upon arrival.</li>
+  <li><strong>Proactive NDR (Non-Delivery Report) Resolution</strong>: Ingests delivery failure events from courier APIs (Shiprocket, Delhivery, Bluedart). Interactively prompts the customer on WhatsApp for updated landmarks, floor numbers, or timing before Return to Origin (RTO) occurs.</li>
+  <li><strong>Automated CSAT / Review Collection</strong>: Dispatches a 1-5 star survey 3 days post-delivery:
+    <ul>
+      <li><strong>5 Stars</strong>: Records positive review and shares direct Google Review and Instagram profile links.</li>
+      <li><strong>4 Stars</strong>: Logs satisfaction and thanks the customer warmly.</li>
+      <li><strong>1-3 Stars</strong>: Apologizes, logs the feedback, and auto-generates an escalation ticket for customer care follow-up.</li>
+    </ul>
+  </li>
+  <li><strong>Hinglish Habit-Building Retention Loop</strong>:
+    <ul>
+      <li><strong>Day 2</strong>: Fridge placement tip (storing beside cold water bottles).</li>
+      <li><strong>Day 4 (9:15 PM)</strong>: Post-dinner habit trigger (<em>"Plate saaf ho chuki hai na?..."</em>).</li>
+      <li><strong>Day 14</strong>: Dining table anchor cross-sell (introducing Seeds Fusion for snacking).</li>
+    </ul>
+  </li>
+</ul>
+
+<h3>3.4 Live Support Desk Command Center</h3>
+<p>
+Built directly into the API server (<code>GET /dashboard/support</code> and <code>GET /admin/support</code>), this responsive web interface provides:
+</p>
+<ul>
+  <li>Real-time live chat view color-coded by message role (Customer, Bot, Agent).</li>
+  <li>One-click live agent composer sending direct WhatsApp replies via Meta API.</li>
+  <li>Ticket escalation management (resolving tickets, muting/unmuting AI bot).</li>
+  <li>Customer 360 dossier: past orders, lifetime spend, abandoned carts, CTWA ad attribution, and NDR delivery logs.</li>
+  <li>Zero Meta OTP friction for human support staff.</li>
+</ul>
+
+<h3>3.5 Universal Business Agnostic Engine</h3>
+<p>
+The platform is fully decoupled via the <code>business/</code> directory:
+</p>
+<ul>
+  <li><code>business-profile.json</code>: Single source of truth for brand data, business models (<code>ecommerce</code>, <code>service</code>, <code>b2b</code>, <code>hybrid</code>), terminology, offerings, and notification copy.</li>
+  <li><code>business-knowledge.md</code>: Domain instructions, FAQs, and brand guidelines for the AI assistant.</li>
+  <li><strong>AI Business Synthesizer</strong>: <code>POST /api/business/ingest</code> takes raw unstructured text or brochures, analyzes the business model via Gemini, and automatically configures the platform.</li>
+  <li><strong>ChatGPT Action Integration</strong>: Exposes standard OpenAPI 3.1.0 specifications via <code>chatgpt-action-openapi.json</code>.</li>
+</ul>
+
+<h2>4. Platform Database Schema</h2>
+<p>
+The platform manages 13 core relational tables inside PostgreSQL (<code>supabase/schema.sql</code>), secured by Row Level Security (RLS):
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Table</th>
+      <th>Primary Purpose</th>
+      <th>Key Fields / Relationships</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>support_conversations</code></td>
+      <td>Active/escalated customer sessions</td>
+      <td><code>phone_number</code> (unique), <code>status</code> (active/escalated/closed), <code>metadata</code></td>
+    </tr>
+    <tr>
+      <td><code>support_messages</code></td>
+      <td>Multi-turn chat history</td>
+      <td><code>conversation_id</code>, <code>role</code> (customer/assistant/human_agent/system), <code>content</code></td>
+    </tr>
+    <tr>
+      <td><code>support_tickets</code></td>
+      <td>Human escalation tracking</td>
+      <td><code>conversation_id</code>, <code>phone_number</code>, <code>reason</code>, <code>status</code> (open/in_progress/resolved)</td>
+    </tr>
+    <tr>
+      <td><code>marketing_dispatches</code></td>
+      <td>14-day anti-fatigue logging</td>
+      <td><code>phone_number</code>, <code>segment_type</code>, <code>status</code>, <code>dispatched_at</code></td>
+    </tr>
+    <tr>
+      <td><code>messaging_receipts</code></td>
+      <td>Meta delivery/read tracking</td>
+      <td><code>wamid</code> (unique), <code>recipient</code>, <code>status</code> (sent/delivered/read/failed)</td>
+    </tr>
+    <tr>
+      <td><code>worker_jobs</code></td>
+      <td>Asynchronous background queue</td>
+      <td><code>job_type</code>, <code>payload</code>, <code>status</code> (pending/processing/completed/failed), <code>scheduled_for</code></td>
+    </tr>
+    <tr>
+      <td><code>ad_referrals</code></td>
+      <td>CTWA ad attribution & ROAS</td>
+      <td><code>phone_number</code>, <code>ad_id</code>, <code>source_id</code>, <code>headline</code>, <code>ctwa_clid</code></td>
+    </tr>
+    <tr>
+      <td><code>ndr_instructions</code></td>
+      <td>Courier delivery instructions</td>
+      <td><code>phone_number</code>, <code>order_number</code>, <code>instructions</code>, <code>courier</code>, <code>status</code></td>
+    </tr>
+    <tr>
+      <td><code>company_settings</code></td>
+      <td>Dynamic business configurations</td>
+      <td><code>id</code>, <code>profile</code> (JSONB), <code>custom_markdown</code>, <code>version</code></td>
+    </tr>
+    <tr>
+      <td><code>processed_webhooks</code></td>
+      <td>Webhook idempotency ledger</td>
+      <td><code>event_id</code> (PK), <code>provider</code>, <code>event_type</code></td>
+    </tr>
+    <tr>
+      <td><code>reviews</code></td>
+      <td>CSAT ratings & synced reviews</td>
+      <td><code>product_id</code>, <code>customer_name</code>, <code>rating</code> (1-5), <code>comment</code>, <code>is_verified</code></td>
+    </tr>
+    <tr>
+      <td><code>promo_codes</code></td>
+      <td>Dynamic single-use recovery codes</td>
+      <td><code>code</code> (unique), <code>type</code>, <code>value</code>, <code>expires_at</code>, <code>used</code></td>
+    </tr>
+    <tr>
+      <td><code>abandoned_cart_logs</code></td>
+      <td>Abandoned cart sessions</td>
+      <td><code>email</code>, <code>phone</code>, <code>subtotal</code>, <code>recovery_token</code>, <code>status</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>5. Operational Security & Database Isolation</h2>
+<ul>
+  <li><strong>Dual Database Guardrails</strong>: The platform database holds state; the external ecommerce store is queried strictly read-only. Modification keywords (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, <code>DROP</code>, <code>ALTER</code>) in store queries throw an immediate <code>DatabaseSafetyError</code>.</li>
+  <li><strong>Local Reset Protection (<code>scripts/db-guard.ts</code>)</strong>: Enforces that <code>pnpm db:reset</code> can strictly run only against local Docker instances (<code>localhost</code> / <code>127.0.0.1</code>) and halts if run in production.</li>
+  <li><strong>Zero Credential Leakage</strong>: Pino structured logger redacts authorization headers, cookies, API tokens, passwords, and Meta signatures.</li>
+  <li><strong>Cryptographic Webhook Verification</strong>: Validates incoming Meta and Shopify webhook payloads using HMAC-SHA256 signatures against the raw body buffer.</li>
+</ul>
+
+<h2>6. Key API Endpoints & Routes</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Endpoint</th>
+      <th>Method</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/health</code>, <code>/ready</code></td>
+      <td>GET</td>
+      <td>Liveness and readiness probes verifying system state and database connectivity.</td>
+    </tr>
+    <tr>
+      <td><code>/webhooks/whatsapp</code></td>
+      <td>GET, POST</td>
+      <td>Meta webhook verification and message/receipt event ingestion.</td>
+    </tr>
+    <tr>
+      <td><code>/webhooks/ecommerce</code></td>
+      <td>POST</td>
+      <td>Store events: order creation, dispatch, delivery, and cart abandonment.</td>
+    </tr>
+    <tr>
+      <td><code>/webhooks/logistics</code></td>
+      <td>POST</td>
+      <td>Courier updates for Shiprocket, Delhivery, Bluedart, and NDR events.</td>
+    </tr>
+    <tr>
+      <td><code>/dashboard/support</code></td>
+      <td>GET</td>
+      <td>Interactive Live Agent Support Desk UI.</td>
+    </tr>
+    <tr>
+      <td><code>/api/support/tickets</code></td>
+      <td>GET, POST</td>
+      <td>List, inspect, and resolve human escalation tickets.</td>
+    </tr>
+    <tr>
+      <td><code>/api/support/conversations/:id/reply</code></td>
+      <td>POST</td>
+      <td>Human agent direct reply dispatch into customer WhatsApp chat.</td>
+    </tr>
+    <tr>
+      <td><code>/api/marketing/trigger</code></td>
+      <td>POST</td>
+      <td>Manually trigger segment-based AI marketing campaigns.</td>
+    </tr>
+    <tr>
+      <td><code>/api/marketing/rfm-segments</code></td>
+      <td>GET</td>
+      <td>Query RFM customer segment breakdown (Champions, Loyal, At-Risk, Dormant).</td>
+    </tr>
+    <tr>
+      <td><code>/api/analytics/roas</code></td>
+      <td>GET</td>
+      <td>Return on Ad Spend calculations for Click-to-WhatsApp ads.</td>
+    </tr>
+    <tr>
+      <td><code>/api/business/ingest</code></td>
+      <td>POST</td>
+      <td>Unstructured business knowledge ingestion and profile synthesis via AI.</td>
+    </tr>
+    <tr>
+      <td><code>/api/owner/metrics/summary</code></td>
+      <td>GET</td>
+      <td>Executive overview metrics: active chats, open tickets, carts, revenue.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>7. Standard Operating Procedures & Commands</h2>
+<pre><code># Development
+pnpm dev              # Launch Fastify API server in dev mode
+pnpm dev:all          # Run all apps (API, Engines, Worker) concurrently
+
+# Environment Switching
+pnpm env:dev          # Switch active .env to local development
+pnpm env:prod         # Switch active .env to production
+
+# Local Database Operations (Docker Supabase)
+pnpm db:start         # Start local Docker PostgreSQL, Auth, Studio
+pnpm db:status        # Display local credentials and ports
+pnpm db:reset         # Guarded reset and migration execution
+pnpm db:stop          # Stop local Docker Supabase
+
+# Verification & Quality Assurance
+pnpm test             # Run complete 14-suite integration test suite
+pnpm typecheck        # TypeScript compilation verification across all workspaces
+pnpm lint             # ESLint code quality checks
+pnpm format           # Prettier formatting verification</code></pre>
+
+</body>
+</html>

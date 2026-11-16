@@ -114,6 +114,29 @@ describe('AI Support and Delivery Status Guardrails', () => {
     ]);
   });
 
+  it('should process Meta and TRAI compliant STOP opt-out and START opt-in requests', async () => {
+    // 1. Customer texts STOP
+    const stopResult = await orchestrator.processMessage({
+      from: '919876543333',
+      messageId: 'test_msg_stop',
+      body: 'STOP',
+    });
+
+    expect(stopResult.action).toBe('opted_out');
+    expect(stopResult.responseText).toContain('successfully unsubscribed');
+    expect(stopResult.responseText).toContain('Reply START');
+
+    // 2. Customer texts START to opt back in
+    const startResult = await orchestrator.processMessage({
+      from: '919876543333',
+      messageId: 'test_msg_start',
+      body: 'START',
+    });
+
+    expect(startResult.action).toBe('opted_in');
+    expect(startResult.responseText).toContain('Welcome back');
+  });
+
   it('should verify formatTemplate safely replaces direct and nested variables', () => {
     const template =
       'Hi {{customerName}}! Order #{{orderNumber}} from {{brand.name}}. Total: ₹{{total}}';

@@ -63,7 +63,14 @@ export interface IncomingMessagePayload {
 
 export interface SupportResolutionResult {
   action:
-    'answered' | 'escalated' | 'delivery_redirect' | 'ignored' | 'escalated_muted' | 'rate_limited';
+    | 'answered'
+    | 'escalated'
+    | 'delivery_redirect'
+    | 'ignored'
+    | 'escalated_muted'
+    | 'rate_limited'
+    | 'opted_out'
+    | 'opted_in';
   responseText?: string;
   customerIdentified: boolean;
   customerId?: string;
@@ -487,6 +494,69 @@ export class SupportOrchestrator {
 
       return {
         action: 'escalated_muted',
+        customerIdentified: Boolean(customer),
+        customerId: customer?.id,
+        conversationId: conversation.id,
+      };
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.5 CHECK RULE: Meta & TRAI Opt-Out / Opt-In Compliance (STOP / START / UNSUBSCRIBE)
+    // -------------------------------------------------------------------------
+    const optOutRegex = /^(\b(stop|unsubscribe|cancel|dnd)\b|opt[\s-]?out)\s*$/i;
+    const optInRegex = /^(\b(start|unstop|subscribe)\b|opt[\s-]?in)\s*$/i;
+
+    if (optOutRegex.test(rawText) || buttonId === 'btn_opt_out') {
+      logger.info({ fromPhone }, 'Customer opted out of WhatsApp automated updates (STOP/UNSUBSCRIBE)');
+      const optOutReply =
+        `You have successfully unsubscribed from promotional updates from ${this.businessProfile.brand.name}. 🙏\n\n` +
+        `You will continue to receive critical transactional updates regarding your orders. Reply START at any time to opt back in.`;
+
+      await this.whatsappProvider.sendMessage({
+        type: 'text',
+        to: fromPhone,
+        body: optOutReply,
+      });
+
+      await this.platformRepo.appendMessage(
+        conversation.id,
+        fromPhone,
+        'assistant',
+        optOutReply,
+      );
+
+      return {
+        action: 'opted_out',
+        responseText: optOutReply,
+        customerIdentified: Boolean(customer),
+        customerId: customer?.id,
+        conversationId: conversation.id,
+      };
+    }
+
+    if (optInRegex.test(rawText) || buttonId === 'btn_opt_in') {
+      logger.info({ fromPhone }, 'Customer opted in to WhatsApp automated updates (START)');
+      const optInReply =
+        `Welcome back to ${this.businessProfile.brand.name}! 🌿\n\n` +
+        `You are now subscribed to product updates, exclusive offers, and fresh batch drops. How can we help you today?`;
+
+      await this.whatsappProvider.sendMessage({
+        type: 'interactive',
+        to: fromPhone,
+        body: optInReply,
+        buttons: this.defaultButtons,
+      });
+
+      await this.platformRepo.appendMessage(
+        conversation.id,
+        fromPhone,
+        'assistant',
+        optInReply,
+      );
+
+      return {
+        action: 'opted_in',
+        responseText: optInReply,
         customerIdentified: Boolean(customer),
         customerId: customer?.id,
         conversationId: conversation.id,
