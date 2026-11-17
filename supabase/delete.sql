@@ -1,12 +1,11 @@
 -- ==============================================================================
--- CLEAN RESET / TEARDOWN SCRIPT (delete.sql)
--- WhatsApp Automation Platform
---
--- Running this script cleanly wipes all platform tables, legacy schemas, and views.
--- Foolproof: Safely handles objects whether they were created as tables or views.
+-- MINTARA AI PLATFORM - TEARDOWN & RESET SCRIPT (delete.sql)
+-- ==============================================================================
+-- Running this script cleanly wipes all platform tables, legacy tables, views,
+-- schemas, and functions. Safe to run repeatedly (fully idempotent).
 -- ==============================================================================
 
--- 1. DROP DOMAIN SCHEMAS (CASCADE removes all views and tables within them)
+-- 1. DROP EXTENSION / DOMAIN SCHEMAS IF PRESENT
 DROP SCHEMA IF EXISTS integration CASCADE;
 DROP SCHEMA IF EXISTS marketing CASCADE;
 DROP SCHEMA IF EXISTS support CASCADE;
@@ -14,7 +13,28 @@ DROP SCHEMA IF EXISTS messaging CASCADE;
 DROP SCHEMA IF EXISTS ecommerce CASCADE;
 DROP SCHEMA IF EXISTS whatsapp_platform CASCADE;
 
--- 2. DYNAMICALLY DROP PUBLIC VIEWS & TABLES SAFELY (Prevents "is not a view" / "is not a table" errors)
+-- 2. EXPLICIT DROP OF ALL KNOWN PLATFORM TABLES (CASCADE handles foreign keys)
+DROP TABLE IF EXISTS public.ai_audit_logs CASCADE;
+DROP TABLE IF EXISTS public.ai_report_deliveries CASCADE;
+DROP TABLE IF EXISTS public.ai_daily_reports CASCADE;
+DROP TABLE IF EXISTS public.ai_report_settings CASCADE;
+DROP TABLE IF EXISTS public.ai_task_executions CASCADE;
+DROP TABLE IF EXISTS public.ai_activity_logs CASCADE;
+DROP TABLE IF EXISTS public.abandoned_cart_logs CASCADE;
+DROP TABLE IF EXISTS public.promo_codes CASCADE;
+DROP TABLE IF EXISTS public.reviews CASCADE;
+DROP TABLE IF EXISTS public.processed_webhooks CASCADE;
+DROP TABLE IF EXISTS public.company_settings CASCADE;
+DROP TABLE IF EXISTS public.ndr_instructions CASCADE;
+DROP TABLE IF EXISTS public.ad_referrals CASCADE;
+DROP TABLE IF EXISTS public.worker_jobs CASCADE;
+DROP TABLE IF EXISTS public.messaging_receipts CASCADE;
+DROP TABLE IF EXISTS public.marketing_dispatches CASCADE;
+DROP TABLE IF EXISTS public.support_tickets CASCADE;
+DROP TABLE IF EXISTS public.support_messages CASCADE;
+DROP TABLE IF EXISTS public.support_conversations CASCADE;
+
+-- 3. DYNAMICALLY DROP ANY REMAINING PUBLIC VIEWS & TABLES SAFELY
 DO $$
 DECLARE
   r RECORD;
@@ -32,6 +52,12 @@ DECLARE
     'reviews',
     'promo_codes',
     'abandoned_cart_logs', 'abandoned_cart_recovery_logs',
+    'ai_activity_logs',
+    'ai_task_executions',
+    'ai_daily_reports',
+    'ai_report_deliveries',
+    'ai_report_settings',
+    'ai_audit_logs',
     'wholesale_leads', 'b2b_wholesale_leads',
     'leads', 'omnichannel_acquisition_leads',
     'crm_activities',
@@ -71,7 +97,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- 3. DROP LEGACY STORED PROCEDURES
+-- 4. DROP STORED PROCEDURES & FUNCTIONS
 DROP FUNCTION IF EXISTS public.create_checkout_order CASCADE;
 DROP FUNCTION IF EXISTS public.decrement_variant_stock CASCADE;
 DROP FUNCTION IF EXISTS public.increment_variant_stock CASCADE;
@@ -80,5 +106,5 @@ DROP FUNCTION IF EXISTS public.cleanup_abandoned_orders CASCADE;
 DROP FUNCTION IF EXISTS public.recalculate_customer_metrics CASCADE;
 DROP FUNCTION IF EXISTS public.update_updated_at_column CASCADE;
 
--- 4. RELOAD POSTGREST SCHEMA CACHE
+-- 5. RELOAD POSTGREST SCHEMA CACHE
 NOTIFY pgrst, 'reload schema';

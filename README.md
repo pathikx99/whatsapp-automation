@@ -43,7 +43,7 @@ whatsapp-platform/
 ### A. Dual-Supabase Isolation
 1. **Mintara AI Platform Supabase**:
    - Manages AI conversations, support tickets, worker jobs, activity logs, task executions, daily reports, and audit trails.
-   - Fully owned and managed via migrations in `supabase/migrations/`.
+   - Fully owned and managed via `supabase/schema.sql` (initialization) and `supabase/delete.sql` (clean reset/teardown).
 2. **Mintara Bites Website Supabase**:
    - Manages customers, products, variants, orders, and website promotions.
    - Strictly external and read-only. Guarded by `assertReadOnlySql()` in `@whatsapp-platform/ecommerce-adapter`.

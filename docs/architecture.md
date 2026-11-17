@@ -62,7 +62,7 @@ A core architectural principle of Mintara AI is strict isolation between the pla
 | **Role** | Platform State, AI conversations, jobs, logs, reports | Source of Truth for Ecommerce |
 | **Data Owned** | Conversations, messages, tickets, jobs, reports, audit | Customers, products, variants, orders, promotions |
 | **Permissions** | Full DDL + DML via migrations | Strictly Read-Only (SELECT queries) |
-| **Migrations** | Executed via `supabase/migrations/` | **NEVER** run migrations against website DB |
+| **Schema / Reset** | Executed via `supabase/schema.sql` & `supabase/delete.sql` | **NEVER** run schema/reset scripts against website DB |
 | **Client Access** | `createPlatformSupabaseClient()` | `createEcommerceSupabaseClient()` (HTTPS REST) |
 | **Safety Guard** | Row-Level Security (RLS) policies | Guarded by `assertReadOnlySql()` |
 

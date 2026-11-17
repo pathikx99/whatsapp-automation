@@ -1,25 +1,31 @@
 -- ==============================================================================
--- WHATSAPP AUTOMATION PLATFORM - REFINED DATABASE SCHEMA
--- Version: 5.0 (Streamlined Platform Architecture)
+-- MINTARA AI PLATFORM - CONSOLIDATED DATABASE SCHEMA (schema.sql)
+-- Version: 6.0 (Complete Unified Platform Architecture)
 -- ==============================================================================
--- This schema belongs strictly to the WhatsApp Marketing & AI Support Platform.
+-- This schema belongs strictly to the Mintara AI WhatsApp Platform.
 -- All external e-commerce data (customers, products, variants, orders, cart_items)
 -- is queried directly from the E-Commerce Supabase instance (ECOMMERCE_SUPABASE_URL).
 --
--- Platform Core Tables (13 Tables):
--- 1. support_conversations  - Active/escalated customer session state
--- 2. support_messages       - Multi-turn conversation chat history
--- 3. support_tickets        - Human escalation tracking & resolution
--- 4. marketing_dispatches   - 14-day anti-fatigue marketing broadcast records
--- 5. messaging_receipts     - WhatsApp Meta status receipts (sent/delivered/read)
--- 6. worker_jobs            - Asynchronous background task queue
--- 7. ad_referrals           - Click-to-WhatsApp (CTWA) ad attribution & ROAS tracking
--- 8. ndr_instructions       - Logistics Non-Delivery Report customer instructions
--- 9. company_settings       - Dynamic business profile, markdown, & system knowledge
+-- Platform Core Tables (19 Tables):
+--  1. support_conversations  - Active/escalated customer session state & mute flags
+--  2. support_messages       - Multi-turn conversation chat history for AI context
+--  3. support_tickets        - Human escalation tracking, review & resolution
+--  4. marketing_dispatches   - Anti-fatigue marketing broadcast records & opt-outs
+--  5. messaging_receipts     - WhatsApp Meta status receipts (sent/delivered/read)
+--  6. worker_jobs            - Asynchronous background task queue with concurrency locks
+--  7. ad_referrals           - Click-to-WhatsApp (CTWA) ad attribution & ROAS tracking
+--  8. ndr_instructions       - Logistics Non-Delivery Report customer instructions
+--  9. company_settings       - Dynamic business profile, markdown & knowledge base
 -- 10. processed_webhooks    - Inbound webhook idempotency ledger
 -- 11. reviews               - WhatsApp CSAT feedback & synced multi-platform reviews
--- 12. promo_codes           - Dynamic single-use cart recovery promotional codes
+-- 12. promo_codes           - Dynamic single-use promotional & cart recovery codes
 -- 13. abandoned_cart_logs   - Abandoned cart campaign tracking & recovery tokens
+-- 14. ai_activity_logs      - Granular event tracking (support, enquiries, tasks)
+-- 15. ai_task_executions    - AI worker task lifecycle & duration tracking
+-- 16. ai_daily_reports      - 22:00 IST intelligence reports & metrics
+-- 17. ai_report_deliveries  - WhatsApp & Dashboard report delivery ledger
+-- 18. ai_report_settings    - Daily reporting schedule (22:00 IST), channels & recipients
+-- 19. ai_audit_logs         - Immutable audit trail for sensitive administrative operations
 -- ==============================================================================
 
 -- ------------------------------------------------------------------------------
@@ -67,10 +73,10 @@ CREATE TABLE IF NOT EXISTS public.support_tickets (
 );
 
 -- ------------------------------------------------------------------------------
--- 3. MARKETING, MESSAGING GATEWAY & QUEUES
+-- 3. MARKETING, MESSAGING GATEWAY & BACKGROUND QUEUE
 -- ------------------------------------------------------------------------------
 
--- 3.1 Marketing Dispatches (14-Day Anti-Fatigue Message Tracking)
+-- 3.1 Marketing Dispatches (Anti-Fatigue Message Tracking & Opt-Outs)
 CREATE TABLE IF NOT EXISTS public.marketing_dispatches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   phone_number VARCHAR(32) NOT NULL,
@@ -94,7 +100,7 @@ CREATE TABLE IF NOT EXISTS public.worker_jobs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   job_type VARCHAR(64) NOT NULL,
   payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-  status VARCHAR(32) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'dead_letter')),
+  status VARCHAR(32) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'retrying', 'dead_letter')),
   retries INT NOT NULL DEFAULT 0,
   max_retries INT NOT NULL DEFAULT 3,
   error TEXT,
@@ -151,66 +157,64 @@ CREATE TABLE IF NOT EXISTS public.company_settings (
 
 -- 4.4 Webhook Idempotency Ledger
 CREATE TABLE IF NOT EXISTS public.processed_webhooks (
-  event_id text PRIMARY KEY,
-  provider text NOT NULL,
-  event_type text,
-  created_at timestamptz DEFAULT now()
+  event_id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  event_type TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 4.5 Customer CSAT & Synced Reviews
 CREATE TABLE IF NOT EXISTS public.reviews (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  product_id text NOT NULL DEFAULT 'general',
-  customer_id uuid,
-  customer_name text NOT NULL,
-  rating integer NOT NULL CHECK (rating >= 1 AND rating <= 5),
-  title text,
-  comment text NOT NULL,
-  images jsonb DEFAULT '[]'::jsonb,
-  is_verified boolean NOT NULL DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT reviews_pkey PRIMARY KEY (id)
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id TEXT NOT NULL DEFAULT 'general',
+  customer_id UUID,
+  customer_name TEXT NOT NULL,
+  rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  title TEXT,
+  comment TEXT NOT NULL,
+  images JSONB DEFAULT '[]'::jsonb,
+  is_verified BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 4.6 Dynamic Promo Codes (Incentives / Cart Recovery)
 CREATE TABLE IF NOT EXISTS public.promo_codes (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  code text NOT NULL UNIQUE,
-  type text NOT NULL CHECK (type = ANY (ARRAY['flat'::text, 'percent'::text, 'free_delivery'::text])),
-  value numeric NOT NULL,
-  min_subtotal numeric,
-  max_discount numeric,
-  expires_at timestamp with time zone,
-  usage_limit integer,
-  used integer DEFAULT 0,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT promo_codes_pkey PRIMARY KEY (id)
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT NOT NULL UNIQUE,
+  type TEXT NOT NULL CHECK (type = ANY (ARRAY['flat'::text, 'percent'::text, 'free_delivery'::text])),
+  value NUMERIC NOT NULL,
+  min_subtotal NUMERIC,
+  max_discount NUMERIC,
+  expires_at TIMESTAMPTZ,
+  usage_limit INTEGER,
+  used INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 4.7 Abandoned Cart Recovery Logs
 CREATE TABLE IF NOT EXISTS public.abandoned_cart_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email text NOT NULL,
-  customer_id uuid,
-  order_id uuid,
-  customer_name text,
-  phone text,
-  cart_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
-  subtotal numeric NOT NULL DEFAULT 0,
-  recovery_token text UNIQUE NOT NULL,
-  stage integer NOT NULL DEFAULT 1,
-  status text NOT NULL DEFAULT 'PENDING',
-  discount_code text,
-  last_email_sent_at timestamp with time zone,
-  recovered_at timestamp with time zone,
-  created_at timestamp with time zone DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL,
+  customer_id UUID,
+  order_id UUID,
+  customer_name TEXT,
+  phone TEXT,
+  cart_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  subtotal NUMERIC NOT NULL DEFAULT 0,
+  recovery_token TEXT UNIQUE NOT NULL,
+  stage INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  discount_code TEXT,
+  last_email_sent_at TIMESTAMPTZ,
+  recovered_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ------------------------------------------------------------------------------
 -- 5. REPORTING, ACTIVITY & AUDIT FOUNDATION
 -- ------------------------------------------------------------------------------
 
--- 5.1 AI Activity Logs
+-- 5.1 AI Activity Logs (Granular Event Tracking)
 CREATE TABLE IF NOT EXISTS public.ai_activity_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_type VARCHAR(64) NOT NULL,
@@ -226,7 +230,7 @@ CREATE TABLE IF NOT EXISTS public.ai_activity_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 5.2 AI Task Executions
+-- 5.2 AI Task Executions (Worker Task Lifecycle Tracking)
 CREATE TABLE IF NOT EXISTS public.ai_task_executions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   task_type VARCHAR(64) NOT NULL,
@@ -254,20 +258,21 @@ CREATE TABLE IF NOT EXISTS public.ai_daily_reports (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 5.4 AI Report Deliveries
+-- 5.4 AI Report Deliveries (WhatsApp & Dashboard Delivery Tracking)
 CREATE TABLE IF NOT EXISTS public.ai_report_deliveries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   report_id UUID REFERENCES public.ai_daily_reports(id) ON DELETE CASCADE,
   channel VARCHAR(32) NOT NULL CHECK (channel IN ('whatsapp', 'dashboard', 'email')),
   recipient VARCHAR(255) NOT NULL,
-  status VARCHAR(32) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'read', 'failed')),
+  status VARCHAR(32) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'delivered', 'read', 'failed')),
   meta_wamid VARCHAR(255),
   error_message TEXT,
   delivered_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_report_delivery UNIQUE (report_id, channel, recipient)
 );
 
--- 5.5 AI Report Settings
+-- 5.5 AI Report Settings (Timezone Asia/Kolkata, Schedule & Delivery Channels)
 CREATE TABLE IF NOT EXISTS public.ai_report_settings (
   id VARCHAR(64) PRIMARY KEY DEFAULT 'current',
   scheduled_time VARCHAR(8) NOT NULL DEFAULT '22:00',
@@ -287,7 +292,7 @@ INSERT INTO public.ai_report_settings (
   'current', '22:00', 'Asia/Kolkata', 'detailed', true, true, true, '[]'::jsonb
 ) ON CONFLICT (id) DO NOTHING;
 
--- 5.6 AI Audit Logs (Sensitive Operations)
+-- 5.6 AI Audit Logs (Immutable Sensitive Operation Trail)
 CREATE TABLE IF NOT EXISTS public.ai_audit_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   action VARCHAR(64) NOT NULL,
@@ -302,7 +307,7 @@ CREATE TABLE IF NOT EXISTS public.ai_audit_logs (
 );
 
 -- ------------------------------------------------------------------------------
--- 6. PERFORMANCE INDEXES
+-- 6. PERFORMANCE & QUERY OPTIMIZATION INDEXES
 -- ------------------------------------------------------------------------------
 
 CREATE INDEX IF NOT EXISTS idx_support_conversations_phone ON public.support_conversations (phone_number);
@@ -337,7 +342,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_audit_logs_actor ON public.ai_audit_logs (acto
 CREATE INDEX IF NOT EXISTS idx_ai_audit_logs_resource ON public.ai_audit_logs (resource_type, resource_id);
 
 -- ------------------------------------------------------------------------------
--- 7. ROW LEVEL SECURITY (RLS) & SERVICE ROLE PERMISSIONS
+-- 7. ROW LEVEL SECURITY (RLS) & SERVICE ROLE PRIVILEGES
 -- ------------------------------------------------------------------------------
 
 ALTER TABLE public.support_conversations ENABLE ROW LEVEL SECURITY;
@@ -440,14 +445,6 @@ BEGIN
       CREATE POLICY service_role_manage_ai_audit_logs ON public.ai_audit_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'promo_codes' AND policyname = 'service_role_manage_promo_codes') THEN
-      CREATE POLICY service_role_manage_promo_codes ON public.promo_codes FOR ALL TO service_role USING (true) WITH CHECK (true);
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'abandoned_cart_logs' AND policyname = 'service_role_manage_abandoned_cart_logs') THEN
-      CREATE POLICY service_role_manage_abandoned_cart_logs ON public.abandoned_cart_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
-    END IF;
-
     GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
     GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO service_role;
     GRANT ALL PRIVILEGES ON ALL ROUTINES IN SCHEMA public TO service_role;
@@ -459,6 +456,6 @@ DROP POLICY IF EXISTS "Public reviews are viewable by everyone" ON public.review
 CREATE POLICY "Public reviews are viewable by everyone" ON public.reviews FOR SELECT USING (true);
 
 -- ------------------------------------------------------------------------------
--- 7. RELOAD POSTGREST SCHEMA CACHE
+-- 8. RELOAD POSTGREST SCHEMA CACHE
 -- ------------------------------------------------------------------------------
 NOTIFY pgrst, 'reload schema';
