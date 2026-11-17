@@ -1,212 +1,165 @@
-# Independent WhatsApp Marketing & AI Customer Support Platform
+# Mintara AI: Enterprise WhatsApp Automation & Intelligence Platform
 
-A high-performance, modular monorepo platform designed to provide automated WhatsApp marketing campaigns and AI-driven customer support for an existing ecommerce application.
+> **Brand**: Mintara Bites (Artisanal Mukhwas & Digestive Treats, Gujarat, India)  
+> **Repository**: `pathikx99/whatsapp-automation`  
+> **Feature Branch**: `foundation/production-ready`
+
+A high-performance, modular TypeScript monorepo providing autonomous WhatsApp marketing workflows, Gemini-powered customer support, background worker queues with atomic concurrency locking, and daily operational intelligence reporting.
 
 ---
 
-## Architecture Summary
+## 1. Monorepo Architecture
 
 ```
 whatsapp-platform/
 ├── apps/
-│   ├── api/                   # Fastify backend API (Health, readiness, webhooks)
-│   ├── marketing-engine/      # Scaffolding for campaign orchestration & broadcasts
-│   ├── support-engine/        # Scaffolding for AI support conversation routing
-│   └── worker/                # Background job queue worker
+│   ├── api/                   # Fastify HTTP server (Webhooks, Admin REST API, Health/Readiness)
+│   ├── worker/                # Background job worker (Atomic locks, retries, dead-letter, 22:00 IST cron)
+│   ├── support-engine/        # AI customer support orchestrator & human escalation desk
+│   └── marketing-engine/      # Segmented retention & marketing campaign dispatcher
 ├── packages/
-│   ├── config/                # Centralized Zod schema validation & secret masking
-│   ├── shared/                # Pino structured logger, custom errors, shutdown handlers
-│   ├── database/              # Dual database clients (Local read/write vs Remote read-only)
-│   ├── ecommerce-adapter/     # Decoupled domain interfaces & read-only contracts
-│   ├── whatsapp/              # WhatsApp gateway interfaces & providers
-│   └── ai/                    # AI provider contracts & LLM adapters
+│   ├── config/                # Centralized Zod schema validation & environment configuration
+│   ├── shared/                # Pino structured logging, timing-safe helpers, custom errors
+│   ├── database/              # Platform repository, atomic job claiming, daily report compiler
+│   ├── ecommerce-adapter/     # External read-only website database adapter (Strictly SELECT only)
+│   ├── whatsapp/              # Meta Cloud API integration, HMAC-SHA256 verification, phone normalization
+│   └── ai/                    # Gemini AI provider abstraction, tool calling, token tracking, backoff
 ├── supabase/
-│   ├── config.toml            # Local Supabase CLI configuration
-│   ├── migrations/            # Schema foundation migrations (integration, marketing, support, messaging)
-│   └── seed.sql               # Local development seed data
-├── scripts/
-│   └── db-guard.ts            # Protection script enforcing local-only db:reset operations
+│   ├── migrations/            # Idempotent versioned SQL migrations for Mintara AI Supabase
+│   │   ├── 20261105000000_core_platform_schema.sql
+│   │   └── 20261117000000_reporting_and_audit_foundation.sql
+│   ├── schema.sql             # Full reference schema with RLS and constraints
+│   └── seed.sql               # Seed data for development
 ├── tests/
-│   └── integration/           # Integration test suite (health, readiness, safety, env)
+│   └── integration/           # Vitest integration test suite (15 test suites, 129 tests)
 └── docs/
-    └── architecture.md        # Comprehensive architecture & isolation documentation
+    └── architecture.md        # Deep architectural design, data flows, and Mermaid diagrams
 ```
-
-For full architectural details, see [docs/architecture.md](docs/architecture.md).
 
 ---
 
-## Prerequisites
+## 2. Core Architectural Pillars
 
-Ensure the following tools are installed on your host machine:
+### A. Dual-Supabase Isolation
+1. **Mintara AI Platform Supabase**:
+   - Manages AI conversations, support tickets, worker jobs, activity logs, task executions, daily reports, and audit trails.
+   - Fully owned and managed via migrations in `supabase/migrations/`.
+2. **Mintara Bites Website Supabase**:
+   - Manages customers, products, variants, orders, and website promotions.
+   - Strictly external and read-only. Guarded by `assertReadOnlySql()` in `@whatsapp-platform/ecommerce-adapter`.
 
-- **Node.js**: `v20.0.0` or higher (verified on `v24.x`)
-- **pnpm**: `v9.x` or higher (`v12.x` verified)
-- **Docker**: Docker Engine running (required for local Supabase)
-- **Supabase CLI**: `v1.x` or higher (`v3.0.0` verified)
+### B. Gemini AI Foundation (`@whatsapp-platform/ai`)
+- **Primary Model**: Google Gemini (`gemini-2.5-flash` or configurable via `AI_MODEL`).
+- **Resilience**: Bounded exponential backoff with randomized jitter on HTTP 429, 500, 502, 503, and 504 errors.
+- **Backend Tool Calling**: Strongly-typed `AiToolDeclaration` and `AiFunctionCall`. AI executes backend services only; AI is **never** granted direct SQL access.
+- **Token & Latency Tracking**: Records `promptTokens`, `completionTokens`, `totalTokens`, and `latencyMs` for every call into `ai_activity_logs`.
+- **Structured JSON**: Native support for `responseMimeType: 'application/json'` and `responseSchema`.
+
+### C. WhatsApp Foundation (`@whatsapp-platform/whatsapp`)
+- **Meta Cloud API Direct**: Supports text, approved templates, interactive reply buttons, interactive section lists, and media (images, audio, documents, video).
+- **Phone Normalization**: Standardizes Indian (`+91`, `0`, unformatted 10-digit) and international phone numbers into E.164 digits via `normalizePhoneNumber()`.
+- **Webhook Security**: Timing-safe HMAC-SHA256 signature verification (`verifyWebhookSignature()`) against Meta's `X-Hub-Signature-256`.
+- **Delivery Receipts**: Tracks delivery receipts (`sent`, `delivered`, `read`, `failed`) into `messaging_receipts`.
+- **Opt-Out Compliance**: Automatic handling of opt-out (`STOP`, `UNSUBSCRIBE`) and opt-in (`START`, `OPTIN`) keywords.
+
+### D. Background Worker & Concurrency (`apps/worker`)
+- **Atomic Job Claiming**: `claimPendingJobs()` locks pending jobs with `locked_at` and `locked_by` to prevent duplicate processing across concurrent workers.
+- **Lock Expiration Protection**: Stale locks automatically expire after `WORKER_JOB_LOCK_TIMEOUT_MS` (default 5 minutes).
+- **Retry Policy**: Exponential backoff with jitter on failures.
+- **Dead-Letter State**: Automatically quarantines failed jobs to `dead_letter` after exceeding `max_retries` (default 3).
+- **Graceful Shutdown**: Drains in-flight jobs on `SIGTERM`/`SIGINT`.
+
+### E. 22:00 IST Operational Intelligence Reporting
+- **Automated Scheduling**: Cron checker runs daily at 22:00 IST (`Asia/Kolkata`) to trigger `generate_daily_report`.
+- **Database-Calculated Metrics**: Aggregates verified metrics from `ai_activity_logs`, `support_tickets`, and `support_conversations` (no LLM hallucination).
+- **Dual Delivery**: Dispatches WhatsApp summary to admin phones and persists report to `ai_daily_reports` for command center dashboard access.
 
 ---
 
-## Installation & Setup
+## 3. Environment Configuration
 
-### 1. Clone & Install Dependencies
-
-```bash
-git clone <repo-url> whatsapp-platform
-cd whatsapp-platform
-pnpm install
-```
-
-### 2. Configure Environment
-
-Copy the example environment template:
-
+Copy the example template:
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` to verify your local settings. By default, the template is preconfigured for local Docker Supabase.
-
-> [!IMPORTANT]
-> Never commit `.env` or any file containing credentials to source control.
-
----
-
-## Local Database Management
-
-This platform utilizes local Supabase (running via Docker) for all development and automated integration testing.
-
-### Start Local Supabase
-
-```bash
-pnpm db:start
-```
-
-This spins up PostgreSQL, Supabase Studio, Inbucket email testing, and the Auth/Storage engines.
-
-### Check Local Supabase Status
-
-```bash
-pnpm db:status
-```
-
-Outputs local API keys, PostgreSQL ports (default `54322`), and the Supabase Studio dashboard URL (default `http://localhost:54323`).
-
-### Run Migrations & Reset Local Database
-
-```bash
-pnpm db:reset
-```
-
-> [!NOTE]
-> `pnpm db:reset` is protected by `scripts/db-guard.ts`. It verifies that the database URL points strictly to a local address (`localhost` or `127.0.0.1`) and halts immediately if executed against any remote host or production environment.
-
-### Stop Local Supabase
-
-```bash
-pnpm db:stop
-```
+Key environment variables:
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `NODE_ENV` | Runtime environment (`development`, `production`, `test`) | `development` |
+| `API_PORT` | Fastify API port | `3000` |
+| `SUPABASE_URL` | Mintara AI Supabase URL | Required |
+| `SUPABASE_SECRET_KEY` | Mintara AI Supabase service key | Required |
+| `ECOMMERCE_SUPABASE_URL` | Website Supabase URL (Read-only) | Required |
+| `ECOMMERCE_SUPABASE_ANON_KEY` | Website Supabase Anon key | Required |
+| `AI_PROVIDER` | AI provider (`gemini`, `mock`) | `gemini` |
+| `AI_API_KEY` | Google Gemini API Key | Required for AI |
+| `AI_MODEL` | Gemini Model ID | `gemini-2.5-flash` |
+| `AI_TIMEOUT_MS` | AI request timeout in milliseconds | `30000` |
+| `AI_MAX_RETRIES` | Max retries for Gemini API calls | `3` |
+| `WHATSAPP_PROVIDER` | WhatsApp provider (`cloud_api`, `mock`) | `mock` (dev) |
+| `WHATSAPP_API_KEY` | Meta System User Access Token | Required for WA |
+| `WHATSAPP_PHONE_NUMBER_ID` | Meta Phone Number ID | Required for WA |
+| `WHATSAPP_APP_SECRET` | Meta App Secret for webhook HMAC | Required for WA |
+| `WORKER_JOB_LOCK_TIMEOUT_MS` | Worker concurrency lock timeout | `300000` |
+| `WORKER_POLL_INTERVAL_MS` | Worker polling interval | `10000` |
+| `REPORTING_TIMEZONE` | Timezone for daily reporting | `Asia/Kolkata` |
+| `REPORTING_DAILY_TIME` | Scheduled report generation time | `22:00` |
+| `ADMIN_API_KEY` | Master admin key for command center | `MintaraBites@010101` |
 
 ---
 
-## Platform Database Schemas
+## 4. Local Development & Testing
 
-The platform maintains four isolated schemas inside PostgreSQL:
-
-- **`integration`**: Connector cursors, sync logs, and ecommerce webhook checkpoints.
-- **`marketing`**: Broadcast definitions, campaigns, and audience segments.
-- **`support`**: AI conversation histories, ticket state, and context memory.
-- **`messaging`**: WhatsApp message dispatch queues and delivery status logs.
-
-Unified database setup: `supabase/schema.sql`. Clean reset script: `supabase/delete.sql`.
-
----
-
-## Connecting the Existing Ecommerce Supabase Safely
-
-To connect the platform to your existing Next.js/Supabase ecommerce store:
-
-1. Configure `ECOMMERCE_SUPABASE_URL` and `ECOMMERCE_SUPABASE_ANON_KEY` in `.env`.
-2. _(Optional)_ If using direct database querying, configure `ECOMMERCE_DATABASE_URL_RO` using a **read-only** database role.
-3. **Safety Guarantee**:
-   - The platform strictly treats the remote ecommerce store as an external, read-only system.
-   - Platform migrations are never executed against the remote database.
-   - The `@whatsapp-platform/database` package enforces keyword inspection via `assertReadOnlySql()` to reject any mutation keywords (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, etc.).
-
----
-
-## Running Applications
-
-### Start the Fastify API (Development)
-
+### Install Dependencies
 ```bash
-pnpm dev
-# Or target specifically:
-pnpm --filter @whatsapp-platform/api dev
+pnpm install
 ```
 
-The API starts on `http://localhost:3000`.
-
-#### Endpoints:
-
-- `GET /health`: Liveness probe (checks process state, uptime, and memory).
-- `GET /ready`: Readiness probe (verifies configuration and active local database connection).
-
-### Start Engines & Worker (Independent Run)
-
+### Build All Workspaces
 ```bash
-# Marketing Engine
-pnpm --filter @whatsapp-platform/marketing-engine dev
-
-# AI Support Engine
-pnpm --filter @whatsapp-platform/support-engine dev
-
-# Task Worker
-pnpm --filter @whatsapp-platform/worker dev
+pnpm build
 ```
 
----
+### Run Type Checking
+```bash
+pnpm typecheck
+```
 
-## Verification & Testing
-
-### Run All Integration Tests
-
+### Run Test Suite
 ```bash
 pnpm test
 ```
+*Current test suite: 15 test files, 129 integration and unit tests, 100% passing.*
 
-### Type Checking & Code Quality
+### Run Applications in Development Mode
 
+**1. Fastify API Server:**
 ```bash
-# Type checking across all workspaces
-pnpm typecheck
+pnpm --filter @whatsapp-platform/api dev
+```
+Accessible at `http://localhost:3000`.
+- Health check: `GET http://localhost:3000/health`
+- Readiness check: `GET http://localhost:3000/ready`
+- Live Support Dashboard: `http://localhost:3000/dashboard/support`
+  - Unlock with admin key: `MintaraBites@010101` (or append `?key=MintaraBites@010101`)
 
-# Code formatting check
-pnpm format
+**2. Background Task Worker:**
+```bash
+pnpm --filter @whatsapp-platform/worker dev
+```
 
-# Linting
-pnpm lint
+**3. Support Engine & Marketing Engine:**
+```bash
+pnpm --filter @whatsapp-platform/support-engine dev
+pnpm --filter @whatsapp-platform/marketing-engine dev
 ```
 
 ---
 
-## Security Precautions
+## 5. Security & Operational Readiness
 
-- **Zero Credential Hardcoding**: All secrets are retrieved via Zod-validated environment configurations.
-- **Strict Secret Redaction**: Structured logging (Pino) redacts authorization headers, cookies, API keys, and passwords.
-- **CORS Protection**: Restricted to explicitly configured origins defined in `CORS_ORIGINS`.
-- **Security Headers**: Integrated via `@fastify/helmet` with strict content-security-policies.
-- **Service-Role Isolation**: The service-role key is never exposed to client applications or used as a general query credential.
-
----
-
-## Milestone Boundaries
-
-This repository represents the **Foundation Milestone**:
-
-- ✅ Multi-schema database architecture & reversible migrations.
-- ✅ Local vs. remote database dual-client isolation with safety guardrails.
-- ✅ Fastify backend API with `/health`, `/ready`, CORS, structured logging, and graceful shutdown.
-- ✅ Independent application boundaries for API, Marketing Engine, Support Engine, and Worker.
-- ✅ Strict environment validation with Zod and zero secret leakage.
-- ⏳ _Marketing engine campaigns, AI conversation processing, live WhatsApp Cloud API integration, and admin dashboards will be implemented in subsequent milestones._
+- **Timing-Safe Admin Auth**: `isValidAdminToken` uses constant-time string comparisons across all authorized administrative tokens.
+- **Secret Masking**: Pino structured logging masks `authorization`, `cookie`, `token`, `secret`, `password`, and `apiKey`.
+- **Zero Frontend Service-Role Key**: The Supabase service-role key is strictly backend-only.
+- **Sensitive Action Authorization**: Operations altering customer commitments, discounts, cancellations, or refunds require human escalation tickets.

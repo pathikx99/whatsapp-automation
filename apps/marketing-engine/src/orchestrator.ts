@@ -95,6 +95,24 @@ export class MarketingOrchestrator {
         continue;
       }
 
+      // Check customer opt-out status
+      if (typeof (this.platformRepo as any).isCustomerOptedOut === 'function') {
+        const isOptedOut = await (this.platformRepo as any).isCustomerOptedOut(phone);
+        if (isOptedOut) {
+          logger.info(
+            { phone },
+            'Skipping marketing candidate due to active opt-out status (STOP compliance)',
+          );
+          report.skippedCount++;
+          report.details.push({
+            phoneNumber: phone,
+            segment: candidate.segmentType,
+            status: 'skipped',
+          });
+          continue;
+        }
+      }
+
       // Check persistent message fatigue from database
       const lastSentTime = await this.platformRepo.getLastMarketingDispatchTime(phone);
       if (lastSentTime && now - lastSentTime < fourteenDaysMs) {

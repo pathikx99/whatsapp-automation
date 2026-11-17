@@ -10,7 +10,10 @@ let ecommerceSupabaseClient: SupabaseClient | null = null;
 export function createEcommerceSupabaseClient(): SupabaseClient {
   if (!ecommerceSupabaseClient) {
     const config = getConfig();
-    const apiKey = config.ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY || config.ECOMMERCE_SUPABASE_ANON_KEY;
+    // Use service role key if available for server-side ecommerce integration, falling back to anon key.
+    // Notice: This client runs strictly server-side and credentials are never exposed to the frontend.
+    const apiKey =
+      config.ECOMMERCE_SUPABASE_SERVICE_ROLE_KEY || config.ECOMMERCE_SUPABASE_ANON_KEY || '';
     ecommerceSupabaseClient = createClient(config.ECOMMERCE_SUPABASE_URL, apiKey, {
       auth: {
         persistSession: false,

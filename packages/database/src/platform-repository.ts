@@ -104,11 +104,116 @@ export interface PlatformWorkerJob {
   id: string;
   jobType: string;
   payload: Record<string, unknown>;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'dead_letter';
   retries: number;
   maxRetries: number;
   error?: string;
+  lockedAt?: string;
+  lockedBy?: string;
   scheduledFor: string;
+  createdAt: string;
+}
+
+export interface PlatformActivityLog {
+  id: string;
+  eventType: string;
+  phoneNumber?: string;
+  customerName?: string;
+  conversationId?: string;
+  status: 'success' | 'failure' | 'pending' | 'escalated' | 'blocked';
+  details: Record<string, unknown>;
+  aiModel?: string;
+  tokensUsed: number;
+  latencyMs: number;
+  errorMessage?: string;
+  createdAt: string;
+}
+
+export interface PlatformTaskExecution {
+  id: string;
+  taskType: string;
+  status: 'started' | 'completed' | 'failed' | 'retrying';
+  targetId?: string;
+  inputPayload?: Record<string, unknown>;
+  outputPayload?: Record<string, unknown>;
+  errorDetails?: string;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+}
+
+export interface PlatformDailyReportMetrics {
+  incomingMessages: number;
+  outgoingMessages: number;
+  supportInteractions: number;
+  resolvedIssues: number;
+  unresolvedIssues: number;
+  orderEnquiries: number;
+  productEnquiries: number;
+  retentionFollowups: number;
+  supplierInteractions: number;
+  meetingsScheduled: number;
+  humanEscalations: number;
+  failedActions: number;
+  aiUsage: {
+    totalTokens: number;
+    totalCalls: number;
+    totalErrors: number;
+    avgLatencyMs: number;
+  };
+}
+
+export interface PlatformDailyReportData {
+  reportDate: string; // YYYY-MM-DD (Asia/Kolkata)
+  summary: string;
+  metrics: PlatformDailyReportMetrics;
+  categories: Record<string, unknown>;
+  unresolvedItems: Array<{ id: string; description: string; phone?: string; severity: string }>;
+  recommendations: string[];
+  status?: 'draft' | 'compiled' | 'delivered' | 'failed';
+}
+
+export interface PlatformDailyReportRecord extends PlatformDailyReportData {
+  id: string;
+  generatedAt: string;
+  updatedAt: string;
+}
+
+export interface PlatformReportDeliveryRecord {
+  id: string;
+  reportId: string;
+  channel: 'whatsapp' | 'dashboard' | 'email';
+  recipient: string;
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+  metaWamid?: string;
+  errorMessage?: string;
+  deliveredAt?: string;
+  createdAt: string;
+}
+
+export interface PlatformReportSettings {
+  id: string;
+  scheduledTime: string;
+  timezone: string;
+  detailLevel: 'summary' | 'standard' | 'detailed';
+  immediateAlerts: boolean;
+  whatsappDeliveryEnabled: boolean;
+  dashboardDeliveryEnabled: boolean;
+  recipientPhoneNumbers: string[];
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface PlatformAuditLog {
+  id: string;
+  action: string;
+  actorType: 'system' | 'ai' | 'admin' | 'customer';
+  actorId?: string;
+  resourceType: string;
+  resourceId?: string;
+  status: 'success' | 'failure' | 'rejected' | 'authorized';
+  changes: Record<string, unknown>;
+  ipAddress?: string;
   createdAt: string;
 }
 
@@ -198,6 +303,24 @@ export class PlatformRepository {
   private customerReviewsCache: CustomerReviewRecord[] = [];
   private ndrInstructionsCache: NdrInstructionRecord[] = [];
   private companySettingsCache: CompanySettingsRecord | null = null;
+  private activityLogsCache: PlatformActivityLog[] = [];
+  private dailyReportsCache: Map<string, PlatformDailyReportRecord> = new Map();
+  private reportDeliveriesCache: PlatformReportDeliveryRecord[] = [];
+  private reportSettingsCache: PlatformReportSettings = {
+    id: 'current',
+    scheduledTime: '22:00',
+    timezone: 'Asia/Kolkata',
+    detailLevel: 'detailed',
+    immediateAlerts: true,
+    whatsappDeliveryEnabled: true,
+    dashboardDeliveryEnabled: true,
+    recipientPhoneNumbers: [],
+    updatedAt: new Date().toISOString(),
+    updatedBy: 'system',
+  };
+  private taskExecutionsCache: Map<string, PlatformTaskExecution> = new Map();
+  private auditLogsCache: PlatformAuditLog[] = [];
+  private optedOutPhones: Set<string> = new Set();
 
   constructor(customClient?: SupabaseClient) {
     this.client = customClient || createLocalSupabaseClient();
@@ -333,6 +456,71 @@ export class PlatformRepository {
       );
       throw new Error(`Database error updating conversation metadata: ${error.message}`);
     }
+  }
+
+  public async setCustomerOptOut(phoneNumber: string, optedOut: boolean): Promise<void> {
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    if (optedOut) {
+      this.optedOutPhones.add(cleanPhone);
+    } else {
+      this.optedOutPhones.delete(cleanPhone);
+    }
+
+    try {
+      const conv = await this.getOrCreateConversation(cleanPhone);
+      const existingMeta = (conv.metadata || {}) as Record<string, unknown>;
+      const updatedMeta: Record<string, unknown> = {
+        ...existingMeta,
+        optedOut,
+        optedOutAt: optedOut ? new Date().toISOString() : undefined,
+      };
+
+      await this.client
+        .from('support_conversations')
+        .update({
+          metadata: updatedMeta,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', conv.id);
+    } catch (err) {
+      logger.warn({ err, phoneNumber: cleanPhone, optedOut }, 'Failed persisting customer opt-out state to database');
+    }
+
+    void this.logActivityEvent({
+      eventType: optedOut ? 'customer_opt_out' : 'customer_opt_in',
+      phoneNumber: cleanPhone,
+      status: 'success',
+      details: { optedOut },
+    }).catch(() => {});
+  }
+
+  public async isCustomerOptedOut(phoneNumber: string): Promise<boolean> {
+    const cleanPhone = phoneNumber.replace(/\D/g, '');
+    if (this.optedOutPhones.has(cleanPhone)) {
+      return true;
+    }
+
+    try {
+      const { data, error } = await this.client
+        .from('support_conversations')
+        .select('status, metadata')
+        .eq('phone_number', cleanPhone)
+        .maybeSingle();
+
+      if (!error && data) {
+        if ((data.status as string) === 'opted_out') {
+          this.optedOutPhones.add(cleanPhone);
+          return true;
+        }
+        const meta = (data.metadata || {}) as Record<string, unknown>;
+        if (meta.optedOut === true) {
+          this.optedOutPhones.add(cleanPhone);
+          return true;
+        }
+      }
+    } catch {}
+
+    return false;
   }
 
   public async getConversationById(id: string): Promise<PlatformConversation | null> {
@@ -689,6 +877,26 @@ export class PlatformRepository {
       logger.error({ error, wamid, recipient: cleanPhone }, 'Failed logging messaging receipt');
       throw new Error(`Database error logging messaging receipt: ${error.message}`);
     }
+
+    // Update corresponding report delivery status if this receipt corresponds to a daily report dispatch
+    for (const d of this.reportDeliveriesCache) {
+      if (d.metaWamid === wamid) {
+        d.status = status;
+        if (status === 'delivered' || status === 'read') {
+          d.deliveredAt = now;
+        }
+      }
+    }
+
+    try {
+      await this.client
+        .from('ai_report_deliveries')
+        .update({
+          status,
+          delivered_at: status === 'delivered' || status === 'read' ? now : null,
+        })
+        .eq('meta_wamid', wamid);
+    } catch {}
   }
 
   // ---------------------------------------------------------------------------
@@ -794,24 +1002,1013 @@ export class PlatformRepository {
 
   public async updateJobStatus(
     jobId: string,
-    status: 'pending' | 'processing' | 'completed' | 'failed',
+    status: 'pending' | 'processing' | 'completed' | 'failed' | 'dead_letter',
     errorMsg?: string,
   ): Promise<void> {
     const now = new Date().toISOString();
+    const updateData: Record<string, unknown> = {
+      status,
+      error: errorMsg || null,
+      updated_at: now,
+    };
+    if (status === 'completed' || status === 'failed' || status === 'dead_letter') {
+      updateData.locked_at = null;
+      updateData.locked_by = null;
+    }
 
     const { error } = await this.client
       .from('worker_jobs')
-      .update({
-        status,
-        error: errorMsg || null,
-        updated_at: now,
-      })
+      .update(updateData)
       .eq('id', jobId);
 
     if (error) {
       logger.error({ error, jobId, status }, 'Failed updating worker_jobs status');
       throw new Error(`Database error updating job status: ${error.message}`);
     }
+  }
+
+  public async claimPendingJobs(
+    workerId: string,
+    limit = 10,
+    lockTimeoutSec = 300,
+  ): Promise<PlatformWorkerJob[]> {
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const expiredLockIso = new Date(now.getTime() - lockTimeoutSec * 1000).toISOString();
+
+    let candidates: any[] | null = null;
+    let hasLockColumns = true;
+
+    // Try fetching with lock condition
+    const { data, error } = await this.client
+      .from('worker_jobs')
+      .select('*')
+      .or(`status.eq.pending,and(status.eq.processing,locked_at.lt.${expiredLockIso})`)
+      .lte('scheduled_for', nowIso)
+      .order('scheduled_for', { ascending: true })
+      .limit(limit);
+
+    if (error) {
+      hasLockColumns = false;
+      // Fallback if locked_at column does not exist yet in DB schema
+      const fallbackRes = await this.client
+        .from('worker_jobs')
+        .select('*')
+        .eq('status', 'pending')
+        .lte('scheduled_for', nowIso)
+        .order('scheduled_for', { ascending: true })
+        .limit(limit);
+
+      if (fallbackRes.error) {
+        logger.error({ error: fallbackRes.error }, 'Failed fetching candidates for job claim');
+        return [];
+      }
+      candidates = fallbackRes.data;
+    } else {
+      candidates = data;
+    }
+
+    const claimed: PlatformWorkerJob[] = [];
+
+    for (const j of candidates || []) {
+      const updatePayload: Record<string, unknown> = {
+        status: 'processing',
+        updated_at: nowIso,
+      };
+      if (hasLockColumns) {
+        updatePayload.locked_at = nowIso;
+        updatePayload.locked_by = workerId;
+      }
+
+      const { data: updated, error: updateError } = await this.client
+        .from('worker_jobs')
+        .update(updatePayload)
+        .eq('id', j.id)
+        .select()
+        .single();
+
+      if (!updateError && updated) {
+        claimed.push({
+          id: updated.id,
+          jobType: updated.job_type,
+          payload: updated.payload,
+          status: updated.status,
+          retries: updated.retries,
+          maxRetries: updated.max_retries,
+          error: updated.error,
+          lockedAt: updated.locked_at,
+          lockedBy: updated.locked_by || workerId,
+          scheduledFor: updated.scheduled_for,
+          createdAt: updated.created_at,
+        });
+      }
+    }
+
+    return claimed;
+  }
+
+  public async markJobFailedOrRetry(
+    jobId: string,
+    errorMsg: string,
+    baseBackoffMs = 60000,
+  ): Promise<{ status: 'retrying' | 'dead_letter'; retries: number; scheduledFor?: string }> {
+    const now = new Date();
+    const { data: job, error: fetchErr } = await this.client
+      .from('worker_jobs')
+      .select('retries, max_retries')
+      .eq('id', jobId)
+      .single();
+
+    if (fetchErr || !job) {
+      await this.updateJobStatus(jobId, 'failed', errorMsg);
+      return { status: 'dead_letter', retries: 0 };
+    }
+
+    const nextRetries = (job.retries || 0) + 1;
+    const maxRetries = job.max_retries || 3;
+
+    if (nextRetries >= maxRetries) {
+      const res = await this.client
+        .from('worker_jobs')
+        .update({
+          status: 'dead_letter',
+          retries: nextRetries,
+          error: errorMsg,
+          locked_at: null,
+          locked_by: null,
+          updated_at: now.toISOString(),
+        })
+        .eq('id', jobId);
+
+      if (res.error) {
+        await this.client
+          .from('worker_jobs')
+          .update({
+            status: 'failed',
+            retries: nextRetries,
+            error: errorMsg,
+            updated_at: now.toISOString(),
+          })
+          .eq('id', jobId);
+      }
+
+      logger.warn({ jobId, retries: nextRetries, maxRetries }, 'Worker job exceeded max retries, moved to dead_letter');
+      return { status: 'dead_letter', retries: nextRetries };
+    } else {
+      const exponentialDelay = baseBackoffMs * Math.pow(2, nextRetries - 1);
+      const jitter = Math.floor(Math.random() * (baseBackoffMs * 0.5));
+      const delayMs = exponentialDelay + jitter;
+      const scheduledFor = new Date(now.getTime() + delayMs).toISOString();
+
+      const res = await this.client
+        .from('worker_jobs')
+        .update({
+          status: 'pending',
+          retries: nextRetries,
+          error: errorMsg,
+          scheduled_for: scheduledFor,
+          locked_at: null,
+          locked_by: null,
+          updated_at: now.toISOString(),
+        })
+        .eq('id', jobId);
+
+      if (res.error) {
+        await this.client
+          .from('worker_jobs')
+          .update({
+            status: 'pending',
+            retries: nextRetries,
+            error: errorMsg,
+            scheduled_for: scheduledFor,
+            updated_at: now.toISOString(),
+          })
+          .eq('id', jobId);
+      }
+
+      logger.info({ jobId, nextRetries, scheduledFor, delayMs }, 'Scheduled job retry with exponential backoff');
+      return { status: 'retrying', retries: nextRetries, scheduledFor };
+    }
+  }
+
+  public async markJobCompleted(jobId: string): Promise<void> {
+    const now = new Date().toISOString();
+    const res = await this.client
+      .from('worker_jobs')
+      .update({
+        status: 'completed',
+        locked_at: null,
+        locked_by: null,
+        updated_at: now,
+      })
+      .eq('id', jobId);
+
+    if (res.error) {
+      await this.client
+        .from('worker_jobs')
+        .update({
+          status: 'completed',
+          updated_at: now,
+        })
+        .eq('id', jobId);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6.5 AI ACTIVITY LOGS, TASK EXECUTIONS & AUDIT
+  // ---------------------------------------------------------------------------
+  public async logActivityEvent(input: {
+    eventType: string;
+    phoneNumber?: string;
+    customerName?: string;
+    conversationId?: string;
+    status?: 'success' | 'failure' | 'pending' | 'escalated' | 'blocked';
+    details?: Record<string, unknown>;
+    aiModel?: string;
+    tokensUsed?: number;
+    latencyMs?: number;
+    errorMessage?: string;
+  }): Promise<PlatformActivityLog> {
+    const fallbackRecord: PlatformActivityLog = {
+      id: `act_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      eventType: input.eventType,
+      phoneNumber: input.phoneNumber,
+      customerName: input.customerName,
+      conversationId: input.conversationId,
+      status: input.status || 'success',
+      details: input.details || {},
+      aiModel: input.aiModel,
+      tokensUsed: input.tokensUsed || 0,
+      latencyMs: input.latencyMs || 0,
+      errorMessage: input.errorMessage,
+      createdAt: new Date().toISOString(),
+    };
+
+    this.activityLogsCache.unshift(fallbackRecord);
+
+    try {
+      const { data, error } = await this.client
+        .from('ai_activity_logs')
+        .insert({
+          event_type: input.eventType,
+          phone_number: input.phoneNumber || null,
+          customer_name: input.customerName || null,
+          conversation_id: input.conversationId || null,
+          status: input.status || 'success',
+          details: input.details || {},
+          ai_model: input.aiModel || null,
+          tokens_used: input.tokensUsed || 0,
+          latency_ms: input.latencyMs || 0,
+          error_message: input.errorMessage || null,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        fallbackRecord.id = data.id;
+        return {
+          id: data.id,
+          eventType: data.event_type,
+          phoneNumber: data.phone_number,
+          customerName: data.customer_name,
+          conversationId: data.conversation_id,
+          status: data.status,
+          details: data.details,
+          aiModel: data.ai_model,
+          tokensUsed: data.tokens_used,
+          latencyMs: data.latency_ms,
+          errorMessage: data.error_message,
+          createdAt: data.created_at,
+        };
+      }
+    } catch {
+      // Return memory fallback
+    }
+
+    return fallbackRecord;
+  }
+
+  public async getActivityLogs(filters?: {
+    eventType?: string;
+    phoneNumber?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<PlatformActivityLog[]> {
+    let logs: PlatformActivityLog[] = [];
+    try {
+      let query = this.client
+        .from('ai_activity_logs')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (filters?.eventType) query = query.eq('event_type', filters.eventType);
+      if (filters?.phoneNumber) query = query.eq('phone_number', filters.phoneNumber);
+      if (filters?.status) query = query.eq('status', filters.status);
+      if (filters?.limit) query = query.limit(filters.limit);
+      if (filters?.offset) query = query.range(filters.offset, filters.offset + (filters.limit || 50) - 1);
+
+      const { data, error } = await query;
+      if (!error && data && data.length > 0) {
+        logs = data.map((d: any) => ({
+          id: d.id,
+          eventType: d.event_type,
+          phoneNumber: d.phone_number,
+          customerName: d.customer_name,
+          conversationId: d.conversation_id,
+          status: d.status,
+          details: d.details,
+          aiModel: d.ai_model,
+          tokensUsed: d.tokens_used,
+          latencyMs: d.latency_ms,
+          errorMessage: d.error_message,
+          createdAt: d.created_at,
+        }));
+      }
+    } catch {}
+
+    if (logs.length === 0 && this.activityLogsCache.length > 0) {
+      let cached = [...this.activityLogsCache];
+      if (filters?.eventType) cached = cached.filter((l) => l.eventType === filters.eventType);
+      if (filters?.phoneNumber) cached = cached.filter((l) => l.phoneNumber === filters.phoneNumber);
+      if (filters?.status) cached = cached.filter((l) => l.status === filters.status);
+      const offset = filters?.offset || 0;
+      const limit = filters?.limit || 50;
+      return cached.slice(offset, offset + limit);
+    }
+
+    return logs;
+  }
+
+  public async startTaskExecution(
+    taskType: string,
+    targetId?: string,
+    inputPayload?: Record<string, unknown>,
+  ): Promise<string> {
+    const id = `task_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const record: PlatformTaskExecution = {
+      id,
+      taskType,
+      targetId,
+      inputPayload,
+      status: 'started',
+      startedAt: new Date().toISOString(),
+    };
+    this.taskExecutionsCache.set(id, record);
+
+    try {
+      const { data, error } = await this.client
+        .from('ai_task_executions')
+        .insert({
+          task_type: taskType,
+          target_id: targetId || null,
+          input_payload: inputPayload || {},
+          status: 'started',
+        })
+        .select('id')
+        .single();
+
+      if (!error && data) {
+        record.id = data.id;
+        this.taskExecutionsCache.set(data.id, record);
+        return data.id;
+      }
+    } catch {}
+
+    return id;
+  }
+
+  public async completeTaskExecution(
+    executionId: string,
+    outputPayload?: Record<string, unknown>,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const existing = this.taskExecutionsCache.get(executionId);
+    if (existing) {
+      existing.status = 'completed';
+      existing.outputPayload = outputPayload;
+      existing.completedAt = now;
+      existing.durationMs = Date.now() - new Date(existing.startedAt).getTime();
+    }
+
+    try {
+      await this.client
+        .from('ai_task_executions')
+        .update({
+          status: 'completed',
+          output_payload: outputPayload || {},
+          completed_at: now,
+        })
+        .eq('id', executionId);
+    } catch {}
+  }
+
+  public async failTaskExecution(executionId: string, errorDetails: string): Promise<void> {
+    const now = new Date().toISOString();
+    const existing = this.taskExecutionsCache.get(executionId);
+    if (existing) {
+      existing.status = 'failed';
+      existing.errorDetails = errorDetails;
+      existing.completedAt = now;
+      existing.durationMs = Date.now() - new Date(existing.startedAt).getTime();
+    }
+
+    try {
+      await this.client
+        .from('ai_task_executions')
+        .update({
+          status: 'failed',
+          error_details: errorDetails,
+          completed_at: now,
+        })
+        .eq('id', executionId);
+    } catch {}
+  }
+
+  public async logAuditEvent(input: {
+    action: string;
+    actorType: 'system' | 'ai' | 'admin' | 'customer';
+    actorId?: string;
+    resourceType: string;
+    resourceId?: string;
+    status?: 'success' | 'failure' | 'rejected' | 'authorized';
+    changes?: Record<string, unknown>;
+    ipAddress?: string;
+  }): Promise<void> {
+    const record: PlatformAuditLog = {
+      id: `audit_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      action: input.action,
+      actorType: input.actorType,
+      actorId: input.actorId,
+      resourceType: input.resourceType,
+      resourceId: input.resourceId,
+      status: input.status || 'success',
+      changes: input.changes || {},
+      ipAddress: input.ipAddress,
+      createdAt: new Date().toISOString(),
+    };
+    this.auditLogsCache.unshift(record);
+
+    try {
+      const { data, error } = await this.client
+        .from('ai_audit_logs')
+        .insert({
+          action: input.action,
+          actor_type: input.actorType,
+          actor_id: input.actorId || null,
+          resource_type: input.resourceType,
+          resource_id: input.resourceId || null,
+          status: input.status || 'success',
+          changes: input.changes || {},
+          ip_address: input.ipAddress || null,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        record.id = data.id;
+      }
+    } catch {}
+  }
+
+  public async getAuditLogs(limit = 50): Promise<PlatformAuditLog[]> {
+    try {
+      const { data, error } = await this.client
+        .from('ai_audit_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (!error && data && data.length > 0) {
+        return data.map((d: any) => ({
+          id: d.id,
+          action: d.action,
+          actorType: d.actor_type,
+          actorId: d.actor_id,
+          resourceType: d.resource_type,
+          resourceId: d.resource_id,
+          status: d.status,
+          changes: d.changes,
+          ipAddress: d.ip_address,
+          createdAt: d.created_at,
+        }));
+      }
+    } catch {}
+
+    return this.auditLogsCache.slice(0, limit);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6.6 DAILY REPORTING FOUNDATION (22:00 IST)
+  // ---------------------------------------------------------------------------
+  public async getDailyReportSettings(): Promise<PlatformReportSettings> {
+    try {
+      const { data, error } = await this.client
+        .from('ai_report_settings')
+        .select('*')
+        .eq('id', 'current')
+        .single();
+
+      if (!error && data) {
+        this.reportSettingsCache = {
+          id: data.id,
+          scheduledTime: data.scheduled_time,
+          timezone: data.timezone,
+          detailLevel: data.detail_level,
+          immediateAlerts: data.immediate_alerts,
+          whatsappDeliveryEnabled: data.whatsapp_delivery_enabled,
+          dashboardDeliveryEnabled: data.dashboard_delivery_enabled,
+          recipientPhoneNumbers: Array.isArray(data.recipient_phone_numbers) ? data.recipient_phone_numbers : [],
+          updatedAt: data.updated_at,
+          updatedBy: data.updated_by,
+        };
+      }
+    } catch {}
+
+    return this.reportSettingsCache;
+  }
+
+  public async updateDailyReportSettings(
+    settings: Partial<PlatformReportSettings>,
+  ): Promise<PlatformReportSettings> {
+    this.reportSettingsCache = {
+      ...this.reportSettingsCache,
+      ...settings,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updatePayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (settings.scheduledTime !== undefined) updatePayload.scheduled_time = settings.scheduledTime;
+    if (settings.timezone !== undefined) updatePayload.timezone = settings.timezone;
+    if (settings.detailLevel !== undefined) updatePayload.detail_level = settings.detailLevel;
+    if (settings.immediateAlerts !== undefined) updatePayload.immediate_alerts = settings.immediateAlerts;
+    if (settings.whatsappDeliveryEnabled !== undefined) updatePayload.whatsapp_delivery_enabled = settings.whatsappDeliveryEnabled;
+    if (settings.dashboardDeliveryEnabled !== undefined) updatePayload.dashboard_delivery_enabled = settings.dashboardDeliveryEnabled;
+    if (settings.recipientPhoneNumbers !== undefined) updatePayload.recipient_phone_numbers = settings.recipientPhoneNumbers;
+    if (settings.updatedBy !== undefined) updatePayload.updated_by = settings.updatedBy;
+
+    try {
+      const { data, error } = await this.client
+        .from('ai_report_settings')
+        .upsert({ id: 'current', ...updatePayload })
+        .select()
+        .single();
+
+      if (!error && data) {
+        this.reportSettingsCache = {
+          id: data.id,
+          scheduledTime: data.scheduled_time,
+          timezone: data.timezone,
+          detailLevel: data.detail_level,
+          immediateAlerts: data.immediate_alerts,
+          whatsappDeliveryEnabled: data.whatsapp_delivery_enabled,
+          dashboardDeliveryEnabled: data.dashboard_delivery_enabled,
+          recipientPhoneNumbers: data.recipient_phone_numbers || [],
+          updatedAt: data.updated_at,
+          updatedBy: data.updated_by,
+        };
+      }
+    } catch {}
+
+    return this.reportSettingsCache;
+  }
+
+  public async compileDailyReport(
+    dateIST?: string,
+    options: { cutoffTime?: string; reconcileLateEvents?: boolean } = {},
+  ): Promise<PlatformDailyReportData> {
+    let targetDate = dateIST;
+    if (!targetDate) {
+      const now = new Date();
+      const istFormatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      targetDate = istFormatter.format(now);
+    }
+
+    const parts = targetDate.split('-').map(Number);
+    const year = parts[0] || new Date().getFullYear();
+    const month = parts[1] || (new Date().getMonth() + 1);
+    const day = parts[2] || new Date().getDate();
+
+    // Start of reporting day: 00:00:00.000 IST (UTC+5:30)
+    const startUtc = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0) - (5 * 60 + 30) * 60 * 1000).toISOString();
+    
+    // Scheduled daily report cutoff: 22:00:00.000 IST (UTC+5:30)
+    const [cutoffHour, cutoffMinute] = (options.cutoffTime || '22:00').split(':').map(Number);
+    const cutoffUtc = new Date(Date.UTC(year, month - 1, day, cutoffHour ?? 22, cutoffMinute ?? 0, 0, 0) - (5 * 60 + 30) * 60 * 1000).toISOString();
+
+    // End of full IST day: 23:59:59.999 IST
+    const endOfDayUtc = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999) - (5 * 60 + 30) * 60 * 1000).toISOString();
+
+    let dbLogs: any[] = [];
+    try {
+      const { data: logs, error: logsError } = await this.client
+        .from('ai_activity_logs')
+        .select('*')
+        .gte('created_at', startUtc)
+        .lte('created_at', endOfDayUtc);
+
+      if (!logsError && logs) {
+        dbLogs = logs;
+      }
+    } catch {}
+
+    const cacheLogs = this.activityLogsCache.filter(
+      (l) => l.createdAt >= startUtc && l.createdAt <= endOfDayUtc,
+    );
+    const seenIds = new Set<string>();
+    const allLogs: PlatformActivityLog[] = [];
+
+    for (const l of [...dbLogs, ...cacheLogs]) {
+      const id = l.id;
+      if (!seenIds.has(id)) {
+        seenIds.add(id);
+        allLogs.push({
+          id: l.id,
+          eventType: l.event_type || l.eventType,
+          phoneNumber: l.phone_number || l.phoneNumber,
+          customerName: l.customer_name || l.customerName,
+          conversationId: l.conversation_id || l.conversationId,
+          status: l.status,
+          details: l.details || {},
+          aiModel: l.ai_model || l.aiModel,
+          tokensUsed: l.tokens_used ?? l.tokensUsed ?? 0,
+          latencyMs: l.latency_ms ?? l.latencyMs ?? 0,
+          errorMessage: l.error_message || l.errorMessage,
+          createdAt: l.created_at || l.createdAt,
+        });
+      }
+    }
+
+    // Partition events: Core reporting window (<= 22:00 IST) vs late-arriving events (> 22:00 IST)
+    const activityLogs = allLogs.filter((l) => (options.reconcileLateEvents ? true : l.createdAt <= cutoffUtc));
+    const lateArrivingLogs = allLogs.filter((l) => l.createdAt > cutoffUtc && l.createdAt <= endOfDayUtc);
+
+    let tickets: any[] = [];
+    try {
+      const { data: ticketData } = await this.client
+        .from('support_tickets')
+        .select('*');
+      if (ticketData) tickets = ticketData;
+    } catch {}
+
+    const openTicketsCount = (tickets || []).filter((t: any) => t.status === 'open' || t.status === 'in_progress').length;
+    const resolvedTodayCount = (tickets || []).filter((t: any) => {
+      if (t.status !== 'resolved' || !t.resolved_at) return false;
+      return t.resolved_at >= startUtc && t.resolved_at <= endOfDayUtc;
+    }).length;
+
+    let incomingMessages = 0;
+    let outgoingMessages = 0;
+    let supportInteractions = 0;
+    let orderEnquiries = 0;
+    let productEnquiries = 0;
+    let retentionFollowups = 0;
+    let supplierInteractions = 0;
+    let meetingsScheduled = 0;
+    let humanEscalations = 0;
+    let failedActions = 0;
+    let totalTokens = 0;
+    let totalAiCalls = 0;
+    let totalAiErrors = 0;
+    let totalLatencyMs = 0;
+
+    const unresolvedItems: Array<{ id: string; description: string; phone?: string; severity: string }> = [];
+
+    for (const log of activityLogs) {
+      if (log.tokensUsed) {
+        totalTokens += Number(log.tokensUsed);
+        totalAiCalls += 1;
+        totalLatencyMs += Number(log.latencyMs || 0);
+      }
+      if (log.status === 'failure' || log.errorMessage) {
+        totalAiErrors += 1;
+        failedActions += 1;
+        unresolvedItems.push({
+          id: log.id,
+          description: log.errorMessage || `Failure during ${log.eventType}`,
+          phone: log.phoneNumber || undefined,
+          severity: 'medium',
+        });
+      }
+
+      switch (log.eventType) {
+        case 'incoming_message':
+          incomingMessages++;
+          break;
+        case 'outgoing_message':
+          outgoingMessages++;
+          break;
+        case 'support_interaction':
+          supportInteractions++;
+          break;
+        case 'order_enquiry':
+          orderEnquiries++;
+          break;
+        case 'product_enquiry':
+          productEnquiries++;
+          break;
+        case 'retention_followup':
+          retentionFollowups++;
+          break;
+        case 'supplier_interaction':
+          supplierInteractions++;
+          break;
+        case 'meeting_scheduled':
+          meetingsScheduled++;
+          break;
+        case 'human_escalation':
+          humanEscalations++;
+          break;
+        case 'failed_action':
+          failedActions++;
+          break;
+      }
+    }
+
+    for (const ticket of tickets || []) {
+      if (ticket.status === 'open' || ticket.status === 'in_progress') {
+        unresolvedItems.push({
+          id: ticket.id,
+          description: `Customer Escalation: ${ticket.reason || 'Human agent assistance requested'}`,
+          phone: ticket.phone_number,
+          severity: 'high',
+        });
+      }
+    }
+
+    const avgLatencyMs = totalAiCalls > 0 ? Math.round(totalLatencyMs / totalAiCalls) : 0;
+
+    const metrics: PlatformDailyReportMetrics = {
+      incomingMessages,
+      outgoingMessages,
+      supportInteractions,
+      resolvedIssues: resolvedTodayCount,
+      unresolvedIssues: openTicketsCount,
+      orderEnquiries,
+      productEnquiries,
+      retentionFollowups,
+      supplierInteractions,
+      meetingsScheduled,
+      humanEscalations,
+      failedActions,
+      aiUsage: {
+        totalTokens,
+        totalCalls: totalAiCalls,
+        totalErrors: totalAiErrors,
+        avgLatencyMs,
+      },
+    };
+
+    const categories = {
+      reportingWindow: {
+        timezone: 'Asia/Kolkata',
+        scheduledCutoff: options.cutoffTime || '22:00',
+        startUtc,
+        cutoffUtc,
+        endOfDayUtc,
+        reconciled: Boolean(options.reconcileLateEvents),
+      },
+      lateArrivingCount: lateArrivingLogs.length,
+      lateArrivingEvents: lateArrivingLogs.map((l) => ({
+        id: l.id,
+        eventType: l.eventType,
+        phoneNumber: l.phoneNumber,
+        createdAt: l.createdAt,
+      })),
+      customerSupport: {
+        interactions: supportInteractions,
+        orderEnquiries,
+        productEnquiries,
+        escalations: humanEscalations,
+        resolvedToday: resolvedTodayCount,
+        openEscalations: openTicketsCount,
+      },
+      marketingAndRetention: {
+        retentionFollowups,
+      },
+      operations: {
+        supplierInteractions,
+        meetingsScheduled,
+        failedActions,
+      },
+      aiPerformance: {
+        totalAiCalls,
+        totalTokens,
+        totalErrors: totalAiErrors,
+        avgLatencyMs,
+      },
+    };
+
+    const recommendations: string[] = [];
+    if (lateArrivingLogs.length > 0 && !options.reconcileLateEvents) {
+      recommendations.push(
+        `Reconciliation notice: ${lateArrivingLogs.length} event(s) arrived after 22:00 IST cutoff. Trigger reconciliation to merge.`,
+      );
+    }
+    if (openTicketsCount > 0) {
+      recommendations.push(`Review and resolve ${openTicketsCount} open customer escalation ticket(s).`);
+    }
+    if (failedActions > 0) {
+      recommendations.push(`Investigate ${failedActions} failed action(s) logged during operations.`);
+    }
+    if (orderEnquiries > 0 && orderEnquiries > supportInteractions * 0.4) {
+      recommendations.push('High volume of order status inquiries detected. Ensure tracking links are sent proactively.');
+    }
+    if (recommendations.length === 0) {
+      recommendations.push('All systems operated smoothly with zero critical escalations.');
+    }
+
+    const summary = [
+      `📊 *Mintara AI Daily Operational Intelligence Report*`,
+      `📅 *Date:* ${targetDate} (22:00 IST)`,
+      ``,
+      `💬 *Messaging & Conversations:*`,
+      `• Inbound Messages: ${incomingMessages}`,
+      `• Outbound Messages: ${outgoingMessages}`,
+      `• Support Interactions: ${supportInteractions}`,
+      `• Order Inquiries: ${orderEnquiries}`,
+      `• Product Inquiries: ${productEnquiries}`,
+      ``,
+      `🎫 *Resolution & Human Escalations:*`,
+      `• Resolved Today: ${resolvedTodayCount}`,
+      `• Open Pending Tickets: ${openTicketsCount}`,
+      `• Human Escalations: ${humanEscalations}`,
+      ``,
+      `📈 *Growth & Retention:*`,
+      `• Retention Follow-ups Dispatched: ${retentionFollowups}`,
+      `• Supplier Interactions: ${supplierInteractions}`,
+      `• Meetings Scheduled: ${meetingsScheduled}`,
+      ``,
+      `🤖 *AI Engine Health:*`,
+      `• AI Completions: ${totalAiCalls}`,
+      `• Tokens Consumed: ${totalTokens.toLocaleString()}`,
+      `• Avg Latency: ${avgLatencyMs}ms`,
+      `• AI Errors: ${totalAiErrors}`,
+      ``,
+      openTicketsCount > 0
+        ? `⚠️ *Action Required:* ${openTicketsCount} open ticket(s) awaiting human review in Command Center.`
+        : `✅ *Status:* All customer inquiries resolved smoothly today.`,
+    ].join('\n');
+
+    return {
+      reportDate: targetDate,
+      summary,
+      metrics,
+      categories,
+      unresolvedItems: unresolvedItems.slice(0, 20),
+      recommendations,
+      status: 'compiled',
+    };
+  }
+
+  public async saveDailyReport(report: PlatformDailyReportData): Promise<PlatformDailyReportRecord> {
+    const now = new Date().toISOString();
+    const record: PlatformDailyReportRecord = {
+      id: `rep_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      reportDate: report.reportDate,
+      summary: report.summary,
+      metrics: report.metrics,
+      categories: report.categories,
+      unresolvedItems: report.unresolvedItems,
+      recommendations: report.recommendations,
+      status: report.status || 'compiled',
+      generatedAt: now,
+      updatedAt: now,
+    };
+    this.dailyReportsCache.set(report.reportDate, record);
+
+    try {
+      const { data, error } = await this.client
+        .from('ai_daily_reports')
+        .upsert(
+          {
+            report_date: report.reportDate,
+            summary: report.summary,
+            metrics: report.metrics,
+            categories: report.categories,
+            unresolved_items: report.unresolvedItems,
+            recommendations: report.recommendations,
+            status: report.status || 'compiled',
+            updated_at: now,
+          },
+          { onConflict: 'report_date' },
+        )
+        .select()
+        .single();
+
+      if (!error && data) {
+        record.id = data.id;
+        this.dailyReportsCache.set(report.reportDate, record);
+      }
+    } catch {}
+
+    return record;
+  }
+
+  public async getDailyReport(dateIST: string): Promise<PlatformDailyReportRecord | null> {
+    try {
+      const { data, error } = await this.client
+        .from('ai_daily_reports')
+        .select('*')
+        .eq('report_date', dateIST)
+        .maybeSingle();
+
+      if (!error && data) {
+        return {
+          id: data.id,
+          reportDate: data.report_date,
+          summary: data.summary,
+          metrics: data.metrics,
+          categories: data.categories,
+          unresolvedItems: data.unresolved_items,
+          recommendations: data.recommendations,
+          status: data.status,
+          generatedAt: data.generated_at,
+          updatedAt: data.updated_at,
+        };
+      }
+    } catch {}
+
+    return this.dailyReportsCache.get(dateIST) || null;
+  }
+
+  public async listDailyReports(limit = 30): Promise<PlatformDailyReportRecord[]> {
+    const cached = Array.from(this.dailyReportsCache.values());
+    try {
+      const { data, error } = await this.client
+        .from('ai_daily_reports')
+        .select('*')
+        .order('report_date', { ascending: false })
+        .limit(limit);
+
+      if (!error && data && data.length > 0) {
+        return (data || []).map((d: any) => ({
+          id: d.id,
+          reportDate: d.report_date,
+          summary: d.summary,
+          metrics: d.metrics,
+          categories: d.categories,
+          unresolvedItems: d.unresolved_items,
+          recommendations: d.recommendations,
+          status: d.status,
+          generatedAt: d.generated_at,
+          updatedAt: d.updated_at,
+        }));
+      }
+    } catch {}
+
+    return cached.slice(0, limit);
+  }
+
+  public async recordReportDelivery(delivery: {
+    reportId: string;
+    channel: 'whatsapp' | 'dashboard' | 'email';
+    recipient: string;
+    status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
+    metaWamid?: string;
+    errorMessage?: string;
+  }): Promise<PlatformReportDeliveryRecord> {
+    const record: PlatformReportDeliveryRecord = {
+      id: `del_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      reportId: delivery.reportId,
+      channel: delivery.channel,
+      recipient: delivery.recipient,
+      status: delivery.status,
+      metaWamid: delivery.metaWamid,
+      errorMessage: delivery.errorMessage,
+      deliveredAt: delivery.status === 'delivered' ? new Date().toISOString() : undefined,
+      createdAt: new Date().toISOString(),
+    };
+    this.reportDeliveriesCache.unshift(record);
+
+    try {
+      const { data, error } = await this.client
+        .from('ai_report_deliveries')
+        .insert({
+          report_id: delivery.reportId,
+          channel: delivery.channel,
+          recipient: delivery.recipient,
+          status: delivery.status,
+          meta_wamid: delivery.metaWamid || null,
+          error_message: delivery.errorMessage || null,
+          delivered_at: delivery.status === 'delivered' ? new Date().toISOString() : null,
+        })
+        .select()
+        .single();
+
+      if (!error && data) {
+        record.id = data.id;
+      }
+    } catch {}
+
+    return record;
   }
 
   // ---------------------------------------------------------------------------

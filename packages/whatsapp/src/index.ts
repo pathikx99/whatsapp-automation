@@ -1,4 +1,5 @@
 import dns from 'node:dns';
+import crypto from 'node:crypto';
 import { createLogger } from '@whatsapp-platform/shared';
 import { getConfig } from '@whatsapp-platform/config';
 
@@ -9,7 +10,17 @@ try {
 }
 
 export type WhatsAppMessageType =
-  'text' | 'template' | 'interactive' | 'media' | 'product' | 'product_list' | 'list';
+  | 'text'
+  | 'template'
+  | 'interactive'
+  | 'media'
+  | 'image'
+  | 'audio'
+  | 'document'
+  | 'video'
+  | 'product'
+  | 'product_list'
+  | 'list';
 
 export interface WhatsAppButtonAction {
   id: string;
@@ -45,12 +56,24 @@ export interface WhatsAppTextMessage {
   previewUrl?: boolean;
 }
 
+export interface WhatsAppMediaMessage {
+  type: 'media' | 'image' | 'audio' | 'document' | 'video';
+  to: string;
+  mediaType?: 'image' | 'audio' | 'document' | 'video';
+  url?: string;
+  id?: string;
+  caption?: string;
+  filename?: string;
+}
+
 export interface WhatsAppTemplateMessage {
   type: 'template';
   to: string;
   templateName: string;
   languageCode: string;
-  parameters?: Array<{ type: string; text?: string }>;
+  parameters?: Array<{ type: string; text?: string; image?: { link: string } }>;
+  headerParameters?: Array<{ type: string; text?: string; image?: { link: string } }>;
+  buttonParameters?: Array<{ type: string; sub_type?: string; index?: string; parameters: Array<{ type: string; text?: string }> }>;
 }
 
 export interface WhatsAppInteractiveMessage {
@@ -88,6 +111,7 @@ export interface WhatsAppProductListMessage {
 
 export type OutboundWhatsAppMessage =
   | WhatsAppTextMessage
+  | WhatsAppMediaMessage
   | WhatsAppTemplateMessage
   | WhatsAppInteractiveMessage
   | WhatsAppProductMessage
@@ -99,6 +123,183 @@ export interface WhatsAppSendResult {
   status: 'sent' | 'queued' | 'simulated';
   recipient: string;
   timestamp: string;
+}
+
+/**
+ * Normalizes phone numbers for WhatsApp Cloud API compliance.
+ * Handles Indian numbers with or without +91 / 0 prefix, as well as international numbers.
+ */
+export function normalizePhoneNumber(phone: string): string {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+
+  // 10-digit Indian number starting with 6, 7, 8, 9
+  if (digits.length === 10 && /^[6-9]/.test(digits)) {
+    return `91${digits}`;
+  }
+
+  // 11-digit Indian number starting with 0 followed by 6, 7, 8, 9
+  if (digits.length === 11 && digits.startsWith('0') && /^[6-9]/.test(digits.slice(1))) {
+    return `91${digits.slice(1)}`;
+  }
+
+  // 12-digit Indian number already starting with 91
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits;
+  }
+
+  // Default clean international digits
+  return digits;
+}
+
+/**
+ * Formats a clean E.164 / normalized phone number for friendly UI display.
+ */
+export function formatDisplayPhoneNumber(phone: string): string {
+  const normalized = normalizePhoneNumber(phone);
+  if (normalized.startsWith('91') && normalized.length === 12) {
+    return `+91 ${normalized.slice(2, 7)} ${normalized.slice(7)}`;
+  }
+  return `+${normalized}`;
+}
+
+/**
+ * Validates Meta WhatsApp Webhook HMAC-SHA256 signature using timingSafeEqual.
+ */
+export function verifyWebhookSignature(
+  payload: Buffer | string,
+  signatureHeader?: string,
+  secret?: string,
+): boolean {
+  if (!secret) return false;
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false;
+
+  try {
+    const signature = signatureHeader.slice(7);
+    const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+    const signatureBuf = Buffer.from(signature, 'hex');
+    const expectedBuf = Buffer.from(expected, 'hex');
+
+    if (signatureBuf.length !== expectedBuf.length) return false;
+    return crypto.timingSafeEqual(signatureBuf, expectedBuf);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Opt-Out and Opt-In keywords according to Meta & TRAI compliance.
+ * Handles exact keywords as well as common phrases (e.g., "stop please", "unsubscribe me").
+ */
+export function isOptOutKeyword(text: string): boolean {
+  if (!text) return false;
+  return /\b(stop|unsubscribe|optout|opt-out|halt|cancel|quit|end|roko)\b/i.test(text.trim());
+}
+
+export function isOptInKeyword(text: string): boolean {
+  if (!text) return false;
+  return /\b(start|unstop|optin|opt-in|resume|shuru)\b/i.test(text.trim());
+}
+
+export interface ParsedWebhookStatus {
+  wamid: string;
+  recipient: string;
+  status: 'sent' | 'delivered' | 'read' | 'failed';
+  timestamp: string;
+  error?: string;
+}
+
+export interface ParsedWebhookMessage {
+  wamid: string;
+  from: string;
+  timestamp: string;
+  type: string;
+  body?: string;
+  interactiveButtonId?: string;
+  interactiveListId?: string;
+  mediaId?: string;
+  mediaType?: string;
+  senderName?: string;
+}
+
+export interface ParsedWebhookResult {
+  statuses: ParsedWebhookStatus[];
+  messages: ParsedWebhookMessage[];
+}
+
+export function parseWhatsAppWebhookPayload(body: unknown): ParsedWebhookResult {
+  const result: ParsedWebhookResult = { statuses: [], messages: [] };
+  if (!body || typeof body !== 'object') return result;
+
+  const entry = (body as any).entry;
+  if (!Array.isArray(entry)) return result;
+
+  for (const item of entry) {
+    const changes = item.changes;
+    if (!Array.isArray(changes)) continue;
+
+    for (const change of changes) {
+      const value = change.value;
+      if (!value) continue;
+
+      // 1. Process status updates
+      if (Array.isArray(value.statuses)) {
+        for (const s of value.statuses) {
+          result.statuses.push({
+            wamid: s.id,
+            recipient: s.recipient_id,
+            status: s.status,
+            timestamp: s.timestamp ? new Date(Number(s.timestamp) * 1000).toISOString() : new Date().toISOString(),
+            error: s.errors?.[0]?.message,
+          });
+        }
+      }
+
+      // 2. Process incoming messages
+      if (Array.isArray(value.messages)) {
+        const profile = value.contacts?.[0]?.profile;
+        const senderName = profile?.name;
+
+        for (const m of value.messages) {
+          let textBody = m.text?.body;
+          let buttonId: string | undefined;
+          let listId: string | undefined;
+
+          if (m.type === 'interactive') {
+            buttonId = m.interactive?.button_reply?.id;
+            listId = m.interactive?.list_reply?.id;
+            textBody = m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || textBody;
+          } else if (m.type === 'button') {
+            buttonId = m.button?.payload || m.button?.text;
+            textBody = m.button?.text || textBody;
+          }
+
+          let mediaId: string | undefined;
+          let mediaType: string | undefined;
+          if (m.type === 'image' || m.type === 'audio' || m.type === 'video' || m.type === 'document' || m.type === 'voice') {
+            mediaType = m.type;
+            mediaId = m[m.type]?.id;
+            textBody = m[m.type]?.caption || textBody;
+          }
+
+          result.messages.push({
+            wamid: m.id,
+            from: m.from,
+            timestamp: m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : new Date().toISOString(),
+            type: m.type,
+            body: textBody,
+            interactiveButtonId: buttonId,
+            interactiveListId: listId,
+            mediaId,
+            mediaType,
+            senderName,
+          });
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 export interface WhatsAppProvider {
@@ -174,10 +375,7 @@ export function createWhatsAppProvider(): WhatsAppProvider {
       );
 
       try {
-        let cleanTo = message.to.replace(/\D/g, '');
-        if (cleanTo.length === 10 && /^[6-9]/.test(cleanTo)) {
-          cleanTo = `91${cleanTo}`;
-        }
+        const cleanTo = normalizePhoneNumber(message.to);
         const payload: Record<string, unknown> = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
@@ -195,6 +393,30 @@ export function createWhatsAppProvider(): WhatsAppProvider {
             preview_url: shouldPreview,
             body: message.body,
           };
+        } else if (
+          message.type === 'media' ||
+          message.type === 'image' ||
+          message.type === 'audio' ||
+          message.type === 'document' ||
+          message.type === 'video'
+        ) {
+          const mediaMsg = message as WhatsAppMediaMessage;
+          const mediaType = mediaMsg.mediaType || (mediaMsg.type === 'media' ? 'image' : mediaMsg.type);
+          payload.type = mediaType;
+          const mediaObject: Record<string, unknown> = {};
+          if (mediaMsg.url) {
+            mediaObject.link = mediaMsg.url;
+          }
+          if (mediaMsg.id) {
+            mediaObject.id = mediaMsg.id;
+          }
+          if (mediaMsg.caption) {
+            mediaObject.caption = mediaMsg.caption;
+          }
+          if (mediaMsg.filename) {
+            mediaObject.filename = mediaMsg.filename;
+          }
+          payload[mediaType] = mediaObject;
         } else if (message.type === 'interactive') {
           payload.type = 'interactive';
           const interactiveBody =

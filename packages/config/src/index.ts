@@ -142,6 +142,10 @@ export const envSchema = z.object({
   AI_PROVIDER: z.enum(['openai', 'anthropic', 'gemini', 'mock']).default('mock'),
   AI_API_KEY: z.string().optional(),
   AI_MODEL: z.string().optional(),
+  AI_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  AI_MAX_RETRIES: z.coerce.number().int().min(0).max(10).default(3),
+  AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.2),
+  AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
 
   // WhatsApp Provider Configuration
   WHATSAPP_PROVIDER: z.enum(['cloud_api', 'twilio', 'mock']).default('mock'),
@@ -151,10 +155,57 @@ export const envSchema = z.object({
   WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
   WHATSAPP_APP_SECRET: z.string().optional(),
 
+  // Worker Queue & Concurrency Configuration
+  WORKER_JOB_LOCK_TIMEOUT_MS: z.coerce.number().int().positive().default(300000),
+  WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(10000),
+
+  // Reporting Configuration (Mintara AI 22:00 IST)
+  REPORTING_TIMEZONE: z.string().default('Asia/Kolkata'),
+  REPORTING_DAILY_TIME: z.string().regex(/^\d{2}:\d{2}$/, 'REPORTING_DAILY_TIME must be HH:MM format').default('22:00'),
+  REPORTING_IMMEDIATE_ALERTS: z
+    .union([z.boolean(), z.string()])
+    .default(true)
+    .transform((val) => val === true || val === 'true' || val === '1'),
+  REPORTING_ALERT_PHONE_NUMBER: z.string().optional(),
+
   // Integrations & Alerts
   ECOMMERCE_WEBHOOK_SECRET: z.string().optional(),
   ADMIN_API_KEY: z.string().optional(),
   ADMIN_ALERT_PHONE_NUMBER: z.string().optional(),
+}).superRefine((data, ctx) => {
+  const isProduction = data.NODE_ENV === 'production';
+  if (isProduction) {
+    if (!data.ADMIN_API_KEY || data.ADMIN_API_KEY.trim() === '') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ADMIN_API_KEY'],
+        message: 'ADMIN_API_KEY must be explicitly and securely configured in production',
+      });
+    }
+    if (data.WHATSAPP_PROVIDER === 'cloud_api') {
+      if (!data.WHATSAPP_API_KEY || data.WHATSAPP_API_KEY.trim() === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['WHATSAPP_API_KEY'],
+          message: 'WHATSAPP_API_KEY is required in production when WHATSAPP_PROVIDER=cloud_api',
+        });
+      }
+      if (!data.WHATSAPP_APP_SECRET || data.WHATSAPP_APP_SECRET.trim() === '') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['WHATSAPP_APP_SECRET'],
+          message: 'WHATSAPP_APP_SECRET is required in production when WHATSAPP_PROVIDER=cloud_api for webhook HMAC verification',
+        });
+      }
+    }
+    if (data.AI_PROVIDER === 'gemini' && (!data.AI_API_KEY || data.AI_API_KEY.trim() === '')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AI_API_KEY'],
+        message: 'AI_API_KEY is required in production when AI_PROVIDER=gemini',
+      });
+    }
+  }
 });
 
 export type RawConfig = z.input<typeof envSchema>;
@@ -188,6 +239,12 @@ export function validateConfig(raw: Record<string, unknown> = process.env): AppC
   }
   if (!normalized.SUPABASE_PUBLISHABLE_KEY && normalized.LOCAL_SUPABASE_ANON_KEY) {
     normalized.SUPABASE_PUBLISHABLE_KEY = normalized.LOCAL_SUPABASE_ANON_KEY as string;
+  }
+  if (!normalized.AI_API_KEY && normalized.GEMINI_API_KEY) {
+    normalized.AI_API_KEY = normalized.GEMINI_API_KEY as string;
+  }
+  if (!normalized.REPORTING_ALERT_PHONE_NUMBER && normalized.ADMIN_ALERT_PHONE_NUMBER) {
+    normalized.REPORTING_ALERT_PHONE_NUMBER = normalized.ADMIN_ALERT_PHONE_NUMBER as string;
   }
 
   const result = envSchema.safeParse(normalized);

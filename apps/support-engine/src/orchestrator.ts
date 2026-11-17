@@ -177,6 +177,32 @@ export class SupportOrchestrator {
       reason,
     );
 
+    // 2.1 Log Activity and Audit Events
+    if (typeof this.platformRepo.logActivityEvent === 'function') {
+      void this.platformRepo.logActivityEvent({
+        eventType: 'human_escalation',
+        phoneNumber: fromPhone,
+        customerName,
+        conversationId,
+        status: 'escalated',
+        details: {
+          ticketId: ticket.id,
+          reason,
+        },
+      }).catch(() => {});
+    }
+
+    if (typeof this.platformRepo.logAuditEvent === 'function') {
+      void this.platformRepo.logAuditEvent({
+        action: 'human_escalation_created',
+        actorType: 'ai',
+        resourceType: 'support_ticket',
+        resourceId: ticket.id,
+        status: 'authorized',
+        changes: { reason, phone: fromPhone },
+      }).catch(() => {});
+    }
+
     // 3. Format customer order history summary
     let ordersSummary = '• Total Orders: 0 (No past orders found in store database)';
     if (pastOrders.length > 0 && pastOrders[0]) {
@@ -208,8 +234,7 @@ export class SupportOrchestrator {
 
     const adminSecret =
       config.ADMIN_API_KEY ||
-      (process.env.NODE_ENV === 'production' ? config.ECOMMERCE_WEBHOOK_SECRET : undefined) ||
-      'MintaraBites@010101';
+      (process.env.NODE_ENV === 'production' ? undefined : 'MintaraBites@010101');
     const baseUrl =
       process.env.DASHBOARD_URL ||
       process.env.PUBLIC_APP_URL ||
@@ -362,6 +387,21 @@ export class SupportOrchestrator {
       userMessageContent,
     );
 
+    // Record incoming message activity event
+    if (typeof this.platformRepo.logActivityEvent === 'function') {
+      void this.platformRepo.logActivityEvent({
+        eventType: 'incoming_message',
+        phoneNumber: fromPhone,
+        customerName,
+        conversationId: conversation.id,
+        details: {
+          text: userMessageContent,
+          hasMedia: Boolean(payload.media),
+          hasButton: Boolean(buttonId),
+        },
+      }).catch(() => {});
+    }
+
     // Dynamic Business Knowledge Refresh if using global config
     if (!this.customBusinessProfileProvided) {
       this.businessProfile = getBusinessProfile();
@@ -508,6 +548,9 @@ export class SupportOrchestrator {
 
     if (optOutRegex.test(rawText) || buttonId === 'btn_opt_out') {
       logger.info({ fromPhone }, 'Customer opted out of WhatsApp automated updates (STOP/UNSUBSCRIBE)');
+      if (typeof this.platformRepo.setCustomerOptOut === 'function') {
+        await this.platformRepo.setCustomerOptOut(fromPhone, true);
+      }
       const optOutReply =
         `You have successfully unsubscribed from promotional updates from ${this.businessProfile.brand.name}. 🙏\n\n` +
         `You will continue to receive critical transactional updates regarding your orders. Reply START at any time to opt back in.`;
@@ -536,6 +579,9 @@ export class SupportOrchestrator {
 
     if (optInRegex.test(rawText) || buttonId === 'btn_opt_in') {
       logger.info({ fromPhone }, 'Customer opted in to WhatsApp automated updates (START)');
+      if (typeof this.platformRepo.setCustomerOptOut === 'function') {
+        await this.platformRepo.setCustomerOptOut(fromPhone, false);
+      }
       const optInReply =
         `Welcome back to ${this.businessProfile.brand.name}! 🌿\n\n` +
         `You are now subscribed to product updates, exclusive offers, and fresh batch drops. How can we help you today?`;
@@ -1597,6 +1643,24 @@ export class SupportOrchestrator {
 
       const replyText = aiResponse.content.trim();
 
+      // Log AI completion activity event
+      if (typeof this.platformRepo.logActivityEvent === 'function') {
+        void this.platformRepo.logActivityEvent({
+          eventType: 'support_interaction',
+          phoneNumber: fromPhone,
+          customerName,
+          conversationId: conversation.id,
+          status: 'success',
+          aiModel: aiResponse.model,
+          tokensUsed: aiResponse.usage?.totalTokens || 0,
+          latencyMs: aiResponse.latencyMs || 0,
+          details: {
+            promptTokens: aiResponse.usage?.promptTokens || 0,
+            completionTokens: aiResponse.usage?.completionTokens || 0,
+          },
+        }).catch(() => {});
+      }
+
       // Check for Autonomous AI Escalation trigger
       const escalateMatch = replyText.match(/\[ESCALATE:\s*([^\]]+)\]/i);
       if (escalateMatch && escalateMatch[1]) {
@@ -1663,6 +1727,17 @@ export class SupportOrchestrator {
       };
     } catch (err) {
       logger.error({ err, fromPhone }, 'Failed to generate and send AI response');
+
+      if (typeof this.platformRepo.logActivityEvent === 'function') {
+        void this.platformRepo.logActivityEvent({
+          eventType: 'failed_action',
+          phoneNumber: fromPhone,
+          customerName,
+          conversationId: conversation.id,
+          status: 'failure',
+          errorMessage: err instanceof Error ? err.message : String(err),
+        }).catch(() => {});
+      }
 
       const fallbackMsg = formatTemplate(this.businessProfile.supportMessages.fallbackError, {
         customerName,

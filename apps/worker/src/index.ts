@@ -4,6 +4,7 @@ import {
   closeLocalDbPool,
   getPlatformRepository,
   PlatformWorkerJob,
+  PlatformDailyReportRecord,
 } from '@whatsapp-platform/database';
 import { createWhatsAppProvider, OutboundWhatsAppMessage } from '@whatsapp-platform/whatsapp';
 import { MarketingOrchestrator } from '@whatsapp-platform/marketing-engine';
@@ -160,6 +161,13 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
         };
 
         const phone = payload.customerPhone;
+        if (typeof (platformRepo as any).isCustomerOptedOut === 'function') {
+          const optedOut = await (platformRepo as any).isCustomerOptedOut(phone);
+          if (optedOut) {
+            logger.info({ phone, jobType: job.jobType }, 'Skipping review prompt due to customer opt-out');
+            break;
+          }
+        }
         const name = payload.customerName || 'Friend';
         const profile = getBusinessProfile();
         const brand = profile.brand.name;
@@ -235,6 +243,13 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
         };
 
         const phone = payload.customerPhone;
+        if (typeof (platformRepo as any).isCustomerOptedOut === 'function') {
+          const optedOut = await (platformRepo as any).isCustomerOptedOut(phone);
+          if (optedOut) {
+            logger.info({ phone, jobType: job.jobType }, 'Skipping dinner habit trigger due to customer opt-out');
+            break;
+          }
+        }
         const name = payload.customerName || 'Friend';
         const profile = getBusinessProfile();
 
@@ -271,6 +286,13 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
         };
 
         const phone = payload.customerPhone;
+        if (typeof (platformRepo as any).isCustomerOptedOut === 'function') {
+          const optedOut = await (platformRepo as any).isCustomerOptedOut(phone);
+          if (optedOut) {
+            logger.info({ phone, jobType: job.jobType }, 'Skipping table anchor cross sell due to customer opt-out');
+            break;
+          }
+        }
         const name = payload.customerName || 'Friend';
         const profile = getBusinessProfile();
         const ecommerceAdapter = createEcommerceAdapter();
@@ -321,6 +343,93 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
         break;
       }
 
+      case 'retry_report_delivery':
+      case 'generate_daily_report': {
+        const payload = (job.payload || {}) as {
+          dateIST?: string;
+          reportId?: string;
+          retryOnlyDelivery?: boolean;
+          recipientPhone?: string;
+        };
+        const dateIST = payload.dateIST;
+        let saved: PlatformDailyReportRecord | null = null;
+
+        // If retrying delivery, attempt to reuse existing report without regenerating
+        if (payload.retryOnlyDelivery || job.jobType === 'retry_report_delivery' || payload.reportId) {
+          if (dateIST) {
+            saved = await platformRepo.getDailyReport(dateIST);
+          }
+        }
+
+        if (!saved) {
+          logger.info({ dateIST }, 'Worker compiling Mintara AI Daily Intelligence Report (22:00 IST)');
+          const reportData = await platformRepo.compileDailyReport(dateIST);
+          saved = await platformRepo.saveDailyReport(reportData);
+        } else {
+          logger.info(
+            { dateIST, reportId: saved.id },
+            'Reusing existing compiled daily report for delivery retry (no regeneration)',
+          );
+        }
+
+        const settings = await platformRepo.getDailyReportSettings();
+        const config = getConfig();
+        const recipients = new Set<string>();
+
+        if (payload.recipientPhone) {
+          recipients.add(payload.recipientPhone);
+        } else {
+          if (Array.isArray(settings.recipientPhoneNumbers)) {
+            for (const p of settings.recipientPhoneNumbers) {
+              recipients.add(p);
+            }
+          }
+          if (config.REPORTING_ALERT_PHONE_NUMBER) {
+            recipients.add(config.REPORTING_ALERT_PHONE_NUMBER);
+          }
+          if (config.ADMIN_ALERT_PHONE_NUMBER) {
+            recipients.add(config.ADMIN_ALERT_PHONE_NUMBER);
+          }
+        }
+
+        if (settings.whatsappDeliveryEnabled && recipients.size > 0) {
+          for (const phone of recipients) {
+            try {
+              const sendRes = await whatsappProvider.sendMessage({
+                type: 'text',
+                to: phone,
+                body: saved.summary,
+              });
+              await platformRepo.recordReportDelivery({
+                reportId: saved.id,
+                channel: 'whatsapp',
+                recipient: phone,
+                status: 'delivered',
+                metaWamid: sendRes.messageId,
+              });
+            } catch (sendErr) {
+              const errStr = sendErr instanceof Error ? sendErr.message : String(sendErr);
+              logger.error({ err: errStr, phone }, 'Failed delivering daily report via WhatsApp');
+              await platformRepo.recordReportDelivery({
+                reportId: saved.id,
+                channel: 'whatsapp',
+                recipient: phone,
+                status: 'failed',
+                errorMessage: errStr,
+              });
+            }
+          }
+        }
+
+        await platformRepo.recordReportDelivery({
+          reportId: saved.id,
+          channel: 'dashboard',
+          recipient: 'command_center',
+          status: 'delivered',
+        });
+        break;
+      }
+
       default:
         logger.warn(
           { jobId: job.id, type: job.jobType },
@@ -329,13 +438,22 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
     }
 
     job.status = 'completed';
-    await platformRepo.updateJobStatus(job.id, 'completed');
+    if (typeof platformRepo.markJobCompleted === 'function') {
+      await platformRepo.markJobCompleted(job.id);
+    } else {
+      await platformRepo.updateJobStatus(job.id, 'completed');
+    }
     logger.info({ jobId: job.id, type: job.jobType }, 'Queue job completed successfully');
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    job.status = 'failed';
     logger.error({ jobId: job.id, err: errorMsg }, 'Error executing queue job');
-    await platformRepo.updateJobStatus(job.id, 'failed', errorMsg);
+    if (typeof platformRepo.markJobFailedOrRetry === 'function') {
+      const retryResult = await platformRepo.markJobFailedOrRetry(job.id, errorMsg);
+      job.status = retryResult.status === 'dead_letter' ? 'dead_letter' : 'pending';
+    } else {
+      await platformRepo.updateJobStatus(job.id, 'failed', errorMsg);
+      job.status = 'failed';
+    }
   }
 }
 
@@ -343,40 +461,97 @@ async function start() {
   try {
     const config = getConfig();
     const platformRepo = getPlatformRepository();
+    const workerId = `worker_${process.pid}_${Math.random().toString(36).substring(2, 8)}`;
+    const lockTimeoutSec = Math.round((config.WORKER_JOB_LOCK_TIMEOUT_MS || 300000) / 1000);
+    const pollIntervalMs = config.WORKER_POLL_INTERVAL_MS || 10000;
 
     logger.info(
       {
         service: 'worker',
+        workerId,
         nodeEnv: config.NODE_ENV,
         appEnv: config.APP_ENV,
+        pollIntervalMs,
+        lockTimeoutSec,
       },
-      'Background Task Worker operational. Actively polling job queue.',
+      'Background Task Worker operational. Actively polling job queue with atomic locking.',
     );
 
     let isPolling = true;
+    let activeJobsCount = 0;
+    let lastReportDateScheduled = '';
 
-    // Process queued jobs every 10 seconds
+    // Check 22:00 IST schedule for daily reports
+    const checkDailyReportSchedule = async () => {
+      try {
+        const now = new Date();
+        const istTimeStr = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Kolkata',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).format(now);
+
+        const istDateStr = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(now);
+
+        const settings = await platformRepo.getDailyReportSettings();
+        const targetTime = settings.scheduledTime || config.REPORTING_DAILY_TIME || '22:00';
+
+        if (istTimeStr === targetTime && lastReportDateScheduled !== istDateStr) {
+          lastReportDateScheduled = istDateStr;
+          logger.info({ istDateStr, targetTime }, 'Triggering scheduled daily report generation for 22:00 IST');
+
+          // Check if report job is already enqueued to prevent duplicate queuing
+          const scheduled = await platformRepo.fetchScheduledJobs('generate_daily_report');
+          const alreadyQueued = scheduled.some((j) => (j.payload as any)?.dateIST === istDateStr);
+
+          if (!alreadyQueued) {
+            await platformRepo.enqueueJob('generate_daily_report', { dateIST: istDateStr });
+            logger.info({ istDateStr }, 'Enqueued generate_daily_report background task');
+          }
+        }
+      } catch (schedErr) {
+        logger.error({ err: schedErr }, 'Error checking 22:00 IST daily report schedule');
+      }
+    };
+
+    // Process queued jobs using atomic claiming
     const queuePollInterval = setInterval(async () => {
       if (!isPolling) return;
       try {
-        const pendingJobs = await platformRepo.fetchPendingJobs(5);
+        await checkDailyReportSchedule();
+
+        const pendingJobs = await platformRepo.claimPendingJobs(workerId, 5, lockTimeoutSec);
         if (pendingJobs.length > 0) {
-          logger.info({ count: pendingJobs.length }, 'Discovered pending worker queue jobs');
+          logger.info({ count: pendingJobs.length, workerId }, 'Claimed pending worker queue jobs');
           for (const job of pendingJobs) {
-            await processSingleJob(job);
+            if (!isPolling) break;
+            activeJobsCount++;
+            try {
+              await processSingleJob(job);
+            } finally {
+              activeJobsCount = Math.max(0, activeJobsCount - 1);
+            }
           }
         }
       } catch (err) {
         logger.error({ err }, 'Error during worker queue polling cycle');
       }
-    }, 10000);
+    }, pollIntervalMs);
 
     // Heartbeat
     const heartbeatInterval = setInterval(() => {
       logger.debug(
         {
           service: 'worker',
+          workerId,
           status: 'running',
+          activeJobs: activeJobsCount,
           uptime: process.uptime(),
         },
         'Worker queue loop heartbeat',
@@ -384,12 +559,19 @@ async function start() {
     }, 60000);
 
     registerShutdownHandler(logger, async () => {
-      logger.info('Stopping Background Worker...');
+      logger.info({ workerId, activeJobs: activeJobsCount }, 'Stopping Background Worker gracefully...');
       isPolling = false;
       clearInterval(queuePollInterval);
       clearInterval(heartbeatInterval);
+
+      // Wait up to 5 seconds for any currently active jobs to finish processing
+      const drainStart = Date.now();
+      while (activeJobsCount > 0 && Date.now() - drainStart < 5000) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
       await closeLocalDbPool();
-      logger.info('Background Worker stopped gracefully');
+      logger.info({ workerId }, 'Background Worker stopped gracefully');
     });
   } catch (error) {
     logger.fatal({ err: error }, 'Failed to start Background Worker');
