@@ -6,7 +6,12 @@ import {
 } from '@whatsapp-platform/ecommerce-adapter';
 import { createAiProvider, AiProvider } from '@whatsapp-platform/ai';
 import { createWhatsAppProvider, WhatsAppProvider } from '@whatsapp-platform/whatsapp';
-import { getPlatformRepository, PlatformRepository } from '@whatsapp-platform/database';
+import {
+  getPlatformRepository,
+  PlatformRepository,
+  getEnterpriseRepository,
+  EnterpriseRepository,
+} from '@whatsapp-platform/database';
 import { getBusinessProfile, BusinessProfile, formatTemplate } from '@whatsapp-platform/config';
 
 const logger = createLogger({ name: 'marketing-orchestrator' });
@@ -28,6 +33,7 @@ export interface MarketingOrchestratorOptions {
   aiProvider?: AiProvider;
   whatsappProvider?: WhatsAppProvider;
   platformRepository?: PlatformRepository;
+  enterpriseRepository?: EnterpriseRepository;
   businessProfile?: BusinessProfile;
 }
 
@@ -36,6 +42,7 @@ export class MarketingOrchestrator {
   private aiProvider: AiProvider;
   private whatsappProvider: WhatsAppProvider;
   private platformRepo: PlatformRepository;
+  private enterpriseRepo: EnterpriseRepository;
   private businessProfile: BusinessProfile;
 
   private customBusinessProfileProvided: boolean = false;
@@ -45,6 +52,7 @@ export class MarketingOrchestrator {
     this.aiProvider = options.aiProvider || createAiProvider();
     this.whatsappProvider = options.whatsappProvider || createWhatsAppProvider();
     this.platformRepo = options.platformRepository || getPlatformRepository();
+    this.enterpriseRepo = options.enterpriseRepository || getEnterpriseRepository();
     if (options.businessProfile) {
       this.customBusinessProfileProvided = true;
       this.businessProfile = options.businessProfile;
@@ -111,6 +119,22 @@ export class MarketingOrchestrator {
           });
           continue;
         }
+      }
+
+      // Check suppression list (e.g. open unresolved complaint, high risk, manual block)
+      const suppression = await this.enterpriseRepo.isCustomerSuppressed(phone);
+      if (suppression.suppressed) {
+        logger.info(
+          { phone, reason: suppression.reason },
+          'Skipping marketing candidate due to active customer suppression entry',
+        );
+        report.skippedCount++;
+        report.details.push({
+          phoneNumber: phone,
+          segment: candidate.segmentType,
+          status: 'skipped',
+        });
+        continue;
       }
 
       // Check persistent message fatigue from database
@@ -215,7 +239,8 @@ export class MarketingOrchestrator {
       `${dbPromo?.discountValue || 10}% off`;
 
     let promptContext = '';
-    switch (candidate.segmentType) {
+    const segUpper = candidate.segmentType.toUpperCase();
+    switch (segUpper) {
       case 'FIRST_ORDER_NURTURE':
         promptContext = isPromoEnabled
           ? formatTemplate(campaigns.firstOrderNurture.promptInstruction, {
@@ -226,17 +251,23 @@ export class MarketingOrchestrator {
           : `The customer completed their first purchase a week ago. Thank them for supporting ${this.businessProfile.brand.name}, ask how they enjoyed their fresh order, and recommend exploring signature treats without mentioning any discount.`;
         break;
       case 'REPEAT_REPLENISHMENT':
+      case 'REPLENISHMENT':
         promptContext = formatTemplate(campaigns.repeatReplenishment.promptInstruction, {
           brandName: this.businessProfile.brand.name,
           customerName,
         });
         break;
       case 'CART_ABANDONED':
+      case 'ABANDONED_CART':
         promptContext = formatTemplate(campaigns.cartAbandoned.promptInstruction, {
           brandName: this.businessProfile.brand.name,
           cartItemName: candidate.contextData?.cartItemName || 'their favorite treat',
           customerName,
         });
+        break;
+      case 'ABANDONED_CHECKOUT':
+      case 'CHECKOUT_ABANDONED':
+        promptContext = `The customer reached the checkout stage but did not complete the order. Remind them gently about their artisanal digestive treats with free Pan-India shipping on orders ₹699+.`;
         break;
       case 'WIN_BACK':
         promptContext = isPromoEnabled
@@ -246,6 +277,30 @@ export class MarketingOrchestrator {
               customerName,
             })
           : `The customer hasn't ordered in over 60 days. Warmly invite them back to see our newest fresh batches and customer favorites without offering any discounts.`;
+        break;
+      case 'FESTIVAL':
+        promptContext = `Celebrate the festive season with handcrafted mukhwas from Gujarat. Share festive gift hampers and family taster boxes.`;
+        break;
+      case 'PRODUCT_LAUNCH':
+        promptContext = `Introduce our newly launched artisanal treat to VIP food lovers. Emphasize fresh small-batch craftsmanship.`;
+        break;
+      case 'CROSS_SELL':
+        promptContext = `Recommend pairing their favorite Paan Mukhwas with roasted Seeds Fusion or Coconut Crunch for complete after-meal freshness.`;
+        break;
+      case 'REFERRAL':
+        promptContext = `Encourage the customer to share their love for Mintara Bites with friends and family. Give ₹50, get ₹50 rewards.`;
+        break;
+      case 'LOYALTY_REWARDS':
+        promptContext = `Congratulate the customer on their loyalty milestone as a Mintara connoisseur.`;
+        break;
+      case 'REVIEW_COLLECTION':
+        promptContext = `Ask how they enjoyed their recent order and invite them to leave a verified rating or review.`;
+        break;
+      case 'BIRTHDAY_ANNIVERSARY':
+        promptContext = `Send sweet birthday or anniversary celebration greetings with warm wishes from Mintara Bites.`;
+        break;
+      default:
+        promptContext = `Engage the customer with appetizing recommendations of our 100% supari-free artisanal mukhwas treats.`;
         break;
     }
 

@@ -3,10 +3,17 @@ import { createLogger, registerShutdownHandler } from '@whatsapp-platform/shared
 import {
   closeLocalDbPool,
   getPlatformRepository,
+  getEnterpriseRepository,
+  getMultiTenantRepository,
   PlatformWorkerJob,
   PlatformDailyReportRecord,
 } from '@whatsapp-platform/database';
-import { createWhatsAppProvider, OutboundWhatsAppMessage } from '@whatsapp-platform/whatsapp';
+import {
+  createWhatsAppProvider,
+  createEmailProvider,
+  createVoiceProvider,
+  OutboundWhatsAppMessage,
+} from '@whatsapp-platform/whatsapp';
 import { MarketingOrchestrator } from '@whatsapp-platform/marketing-engine';
 import {
   createEcommerceAdapter,
@@ -41,6 +48,9 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
       case 'send_whatsapp': {
         const msg = job.payload as unknown as OutboundWhatsAppMessage;
         await whatsappProvider.sendMessage(msg);
+        const tenantId = (job.payload?.tenantId as string) || '00000000-0000-0000-0000-000000000001';
+        const multiTenantRepo = getMultiTenantRepository();
+        await multiTenantRepo.recordUsage(tenantId, 'messages', 1);
         break;
       }
 
@@ -427,6 +437,186 @@ export async function processSingleJob(job: PlatformWorkerJob): Promise<void> {
           recipient: 'command_center',
           status: 'delivered',
         });
+        break;
+      }
+
+      case 'execute_campaign': {
+        const payload = (job.payload || {}) as {
+          campaignId: string;
+          scheduledBy?: string;
+          channel?: string;
+          tenantId?: string;
+        };
+        const tenantId = payload.tenantId || '00000000-0000-0000-0000-000000000001';
+        const enterpriseRepo = getEnterpriseRepository();
+        const campaigns = await enterpriseRepo.listCampaignDefinitions(tenantId);
+        const campaign = campaigns.find((c) => c.id === payload.campaignId);
+
+        if (!campaign) {
+          logger.warn({ campaignId: payload.campaignId }, 'Campaign definition not found; skipping execution');
+          break;
+        }
+
+        if (!campaign.isEnabled) {
+          logger.info({ campaignId: payload.campaignId }, 'Campaign is inactive; skipping execution');
+          break;
+        }
+
+        const execution = await enterpriseRepo.createCampaignExecution({
+          campaignId: campaign.id,
+          totalTarget: 1,
+          scheduledFor: new Date().toISOString(),
+        });
+
+        const ecommerceAdapter = createEcommerceAdapter();
+        const candidates = await ecommerceAdapter.getMarketingCandidates();
+
+        let sentCount = 0;
+        let skippedCount = 0;
+        let failedCount = 0;
+
+        for (const candidate of candidates) {
+          const phone = candidate.customer.phoneNumber;
+          if (!phone) continue;
+          const suppCheck = await enterpriseRepo.isCustomerSuppressed(phone);
+          if (suppCheck.suppressed) {
+            skippedCount++;
+            continue;
+          }
+
+          try {
+            const body = campaign.messageTemplate || 'Special treat awaits you at Mintara Bites!';
+            await whatsappProvider.sendMessage({
+              type: 'text',
+              to: phone,
+              body,
+            });
+            await enterpriseRepo.recordCampaignRecipient({
+              tenantId: campaign.tenantId,
+              executionId: execution.id,
+              campaignId: campaign.id,
+              customerId: candidate.customer.id,
+              phoneNumber: phone,
+              status: 'sent',
+            });
+            sentCount++;
+          } catch (sendErr) {
+            failedCount++;
+            logger.error({ err: sendErr, customerId: candidate.customer.id }, 'Failed sending campaign WhatsApp message');
+          }
+        }
+
+        logger.info({ campaignId: campaign.id, sentCount, skippedCount, failedCount }, 'Campaign execution completed');
+        break;
+      }
+
+      case 'send_supplier_email': {
+        const payload = (job.payload || {}) as {
+          supplierId?: string;
+          to: string;
+          subject: string;
+          body: string;
+        };
+        const emailProvider = createEmailProvider();
+        const sendRes = await emailProvider.sendEmail({
+          to: payload.to,
+          subject: payload.subject,
+          text: payload.body,
+        });
+
+        if (payload.supplierId) {
+          const enterpriseRepo = getEnterpriseRepository();
+          await enterpriseRepo.recordSupplierInteraction({
+            supplierId: payload.supplierId,
+            interactionType: 'email',
+            initiatedBy: 'ai',
+            subject: payload.subject,
+            summary: payload.body,
+          });
+        }
+        logger.info({ to: payload.to, id: sendRes.id }, 'Supplier email successfully dispatched');
+        break;
+      }
+
+      case 'initiate_supplier_call': {
+        const payload = (job.payload || {}) as {
+          supplierId?: string;
+          phoneNumber: string;
+          callerName?: string;
+          purpose?: string;
+          promptContext?: string;
+        };
+        const voiceProvider = createVoiceProvider();
+        const callRes = await voiceProvider.initiateCall({
+          phoneNumber: payload.phoneNumber,
+          callerIdentity: payload.callerName || 'Mintara Bites Manager',
+          purpose: payload.purpose || 'Material quotation follow-up',
+          initialScriptPrompt: payload.promptContext,
+        });
+
+        if (payload.supplierId) {
+          const enterpriseRepo = getEnterpriseRepository();
+          const mappedStatus: 'initiated' | 'failed' = callRes.status === 'failed' ? 'failed' : 'initiated';
+          await enterpriseRepo.recordSupplierCall({
+            tenantId: '00000000-0000-0000-0000-000000000001',
+            supplierId: payload.supplierId,
+            phoneNumber: payload.phoneNumber,
+            callerIdentity: 'Mintara Bites Manager',
+            provider: 'mock',
+            providerCallId: callRes.callId,
+            callStatus: mappedStatus,
+            durationSeconds: 0,
+            recipientLanguage: 'hi-IN',
+            transcript: 'Automated telephonic call initiated to supplier.',
+            tentativeAgreement: { initiatedAt: new Date().toISOString() },
+          });
+        }
+        logger.info({ callId: callRes.callId, status: callRes.status }, 'Supplier automated call initiated');
+        break;
+      }
+
+      case 'recalculate_customer_segments': {
+        const enterpriseRepo = getEnterpriseRepository();
+        const ecommerceAdapter = createEcommerceAdapter();
+        const rfmSummary = await ecommerceAdapter.getRFMSegments();
+        const segments = await enterpriseRepo.listCustomerSegments();
+
+        for (const seg of segments) {
+          let count = 0;
+          if (seg.slug === 'loyal' || seg.slug === 'champions') {
+            count = rfmSummary.champions.length;
+          } else if (seg.slug === 'at_risk') {
+            count = rfmSummary.atRisk.length;
+          } else if (seg.slug === 'dormant') {
+            count = rfmSummary.dormant.length;
+          } else {
+            count = rfmSummary.counts.total;
+          }
+          await enterpriseRepo.updateSegmentMemberCount(seg.id, count);
+        }
+        logger.info({ totalCustomers: rfmSummary.counts.total }, 'Recalculated customer RFM segmentation counts');
+        break;
+      }
+
+      case 'reconcile_ecommerce_changes': {
+        const enterpriseRepo = getEnterpriseRepository();
+        const ecommerceAdapter = createEcommerceAdapter();
+        const products = await ecommerceAdapter.getAllActiveProducts();
+
+        for (const prod of products) {
+          for (const variant of prod.variants || []) {
+            if (typeof variant.stockQty === 'number' && variant.stockQty <= 5) {
+              await enterpriseRepo.createOperationalAlert({
+                category: 'manufacturing',
+                severity: variant.stockQty === 0 ? 'critical' : 'high',
+                title: `Low Stock: ${prod.title} (${variant.flavor || variant.sku})`,
+                summary: `Stock level dropped to ${variant.stockQty} units in store catalog.`,
+                recommendedAction: 'Notify manufacturing or procurement agent for replenishment.',
+              });
+            }
+          }
+        }
+        logger.info({ productCount: products.length }, 'Reconciled ecommerce changes and stock thresholds');
         break;
       }
 

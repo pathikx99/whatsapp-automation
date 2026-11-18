@@ -320,3 +320,6 @@ export function createAiProvider(): AiProvider {
 }
 
 export * from './business-synthesizer.js';
+export * from './tool-registry.js';
+export * from './specialized-agents.js';
+export * from './ai-orchestrator.js';

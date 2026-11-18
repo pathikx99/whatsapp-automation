@@ -21,6 +21,9 @@ import { SupportOrchestrator } from '@whatsapp-platform/support-engine';
 import { MarketingOrchestrator } from '@whatsapp-platform/marketing-engine';
 import { createWhatsAppProvider } from '@whatsapp-platform/whatsapp';
 import { renderSupportDashboardHtml } from './support-dashboard.js';
+import { registerEnterpriseRoutes } from './enterprise-routes.js';
+import { registerMultiTenantRoutes } from './multi-tenant-routes.js';
+import { resolveTenantContext } from './tenant-context.js';
 
 export interface ServerOptions {
   dbHealthChecker?: () => Promise<DbHealthResult>;
@@ -1105,17 +1108,36 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     }
 
     const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      await resolveTenantContext(req, reply);
+      return;
+    }
+
     const customHeader = (req.headers['x-admin-key'] ||
       req.headers['x-api-key'] ||
       req.headers['x-webhook-secret']) as string | undefined;
     const query = (req.query || {}) as Record<string, string>;
     const queryToken = query.key || query.admin_key || query.adminKey || query.token;
-    const token = authHeader?.startsWith('Bearer ')
-      ? authHeader.slice(7)
-      : (customHeader || queryToken);
+    const token = customHeader || queryToken;
 
     if (!isValidAdminToken(token)) {
       return reply.status(401).send({ error: 'Unauthorized: Invalid admin credentials' });
+    }
+
+    if (!req.tenantContext) {
+      req.tenantContext = {
+        tenantId: '00000000-0000-0000-0000-000000000001',
+        tenantSlug: 'mintara-bites',
+        tenantName: 'Mintara Bites',
+        tenantType: 'internal',
+        isolationMode: 'shared',
+        userId: '10000000-0000-0000-0000-000000000001',
+        userEmail: 'owner@mintarabites.com',
+        isPlatformAdmin: true,
+        platformRole: 'platform_owner',
+        businessRole: 'business_owner',
+        permissions: ['*'],
+      };
     }
   };
 
@@ -2221,6 +2243,12 @@ export async function buildServer(options: ServerOptions = {}): Promise<FastifyI
     const summary = await platformRepo.getEngagementSummary();
     return reply.status(200).send({ summary });
   });
+
+  // Register Mintara AI Enterprise OS routes (15 Specialized Agents, Workflows, Suppliers, Operations, Approvals, Dashboard)
+  registerEnterpriseRoutes(app, { requireAdminAuth });
+
+  // Register Hybrid Multi-Tenancy Platform routes (Control Plane, Onboarding, Workspace, DB Routing)
+  registerMultiTenantRoutes(app);
 
   app.setNotFoundHandler(async (req, reply) => {
     const isHtml = req.headers.accept?.includes('text/html');

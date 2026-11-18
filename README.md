@@ -1,7 +1,7 @@
 # Mintara AI: Enterprise WhatsApp Automation & Intelligence Platform
 
 > **Brand**: Mintara Bites (Artisanal Mukhwas & Digestive Treats, Gujarat, India)  
-> **Repository**: `pathikx99/whatsapp-automation`  
+> **Repository**: `pathikx99/orvx-ai-automation`  
 > **Feature Branch**: `foundation/production-ready`
 
 A high-performance, modular TypeScript monorepo providing autonomous WhatsApp marketing workflows, Gemini-powered customer support, background worker queues with atomic concurrency locking, and daily operational intelligence reporting.

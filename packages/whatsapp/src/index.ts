@@ -731,3 +731,6 @@ export function createWhatsAppProvider(): WhatsAppProvider {
     },
   };
 }
+
+export * from './email-provider.js';
+export * from './voice-provider.js';

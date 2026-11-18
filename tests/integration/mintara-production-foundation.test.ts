@@ -92,7 +92,12 @@ describe('Mintara AI Production Foundation Tests', () => {
   describe('Daily Reporting Foundation (22:00 IST)', () => {
     it('should log granular activity events and calculate daily report metrics correctly', async () => {
       const testPhone = '919876500001';
-      const istDate = '2026-11-17';
+      const istDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
 
       // 1. Log various activity events
       await platformRepo.logActivityEvent({

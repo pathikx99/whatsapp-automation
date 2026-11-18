@@ -311,7 +311,10 @@ export function calculateConsumptionVelocity(
 export interface EcommerceAdapter {
   isConfigured(): boolean;
   getCustomerByPhone(phoneNumber: string): Promise<EcommerceCustomer | null>;
+  getCustomerById(customerId: string): Promise<EcommerceCustomer | null>;
   getCustomerOrders(customerId: string): Promise<EcommerceOrder[]>;
+  getOrderDetails(orderNumberOrId: string): Promise<EcommerceOrder | null>;
+  getVariantStock(sku: string): Promise<number>;
   getAllActiveProducts(): Promise<EcommerceProduct[]>;
   searchProducts(query: string, limit?: number): Promise<EcommerceProduct[]>;
   getMarketingCandidates(): Promise<MarketingSegmentCandidate[]>;
@@ -408,6 +411,104 @@ export function createEcommerceAdapter(): EcommerceAdapter {
       } catch (err) {
         logger.error({ err, phoneNumber }, 'Failed querying customer by phone');
         return null;
+      }
+    },
+
+    async getCustomerById(customerId: string): Promise<EcommerceCustomer | null> {
+      try {
+        const client = createEcommerceSupabaseClient();
+        const { data, error } = await runWithTimeout(
+          client
+            .from('customers')
+            .select(
+              'id, email, first_name, last_name, phone, segment, total_spend, total_orders, last_order_date',
+            )
+            .eq('id', customerId)
+            .limit(1)
+            .maybeSingle(),
+          1500,
+          emptyFallback(),
+        );
+
+        if (error || !data) return null;
+
+        return {
+          id: data.id,
+          phoneNumber: data.phone,
+          email: data.email,
+          firstName: data.first_name,
+          lastName: data.last_name,
+          customerType: data.segment || 'standard',
+          segment: data.segment,
+          totalOrders: data.total_orders,
+          totalSpend: data.total_spend,
+          lastOrderDate: data.last_order_date,
+        };
+      } catch (err) {
+        logger.error({ err, customerId }, 'Failed querying customer by id');
+        return null;
+      }
+    },
+
+    async getOrderDetails(orderNumberOrId: string): Promise<EcommerceOrder | null> {
+      try {
+        const client = createEcommerceSupabaseClient();
+        const { data, error } = await runWithTimeout(
+          client
+            .from('orders')
+            .select(
+              'id, order_number, customer_id, status, payment_status, payment_method, total_amount, created_at, order_items(quantity, price_at_purchase, product_variants(sku, flavor, weight_grams, products(name)))',
+            )
+            .or(`id.eq.${orderNumberOrId},order_number.eq.${orderNumberOrId}`)
+            .limit(1)
+            .maybeSingle(),
+          1500,
+          emptyFallback(),
+        );
+
+        if (error || !data) return null;
+
+        return {
+          id: data.id,
+          customerId: data.customer_id,
+          orderNumber: data.order_number,
+          status: data.status,
+          paymentStatus: data.payment_status,
+          paymentMethod: data.payment_method,
+          totalAmount: Number(data.total_amount),
+          currency: 'INR',
+          createdAt: data.created_at,
+          items: (data.order_items || []).map((item: any) => ({
+            productName: item.product_variants?.products?.name || 'Mukhwas',
+            flavor: item.product_variants?.flavor,
+            weightGrams: item.product_variants?.weight_grams,
+            quantity: item.quantity,
+            unitPrice: Number(item.price_at_purchase),
+          })),
+        };
+      } catch (err) {
+        logger.error({ err, orderNumberOrId }, 'Failed querying order details');
+        return null;
+      }
+    },
+
+    async getVariantStock(sku: string): Promise<number> {
+      try {
+        const client = createEcommerceSupabaseClient();
+        const { data, error } = await runWithTimeout(
+          client
+            .from('product_variants')
+            .select('stock_quantity')
+            .eq('sku', sku)
+            .limit(1)
+            .maybeSingle(),
+          1500,
+          emptyFallback(),
+        );
+        if (error || !data) return 50;
+        return Number(data.stock_quantity ?? 50);
+      } catch {
+        return 50;
       }
     },
 

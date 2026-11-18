@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@whatsapp-platform/config": "workspace:*",
+    "@whatsapp-platform/database": "workspace:*",
+    "@whatsapp-platform/ecommerce-adapter": "workspace:*",
     "@whatsapp-platform/shared": "workspace:*"
   },
   "devDependencies": {
